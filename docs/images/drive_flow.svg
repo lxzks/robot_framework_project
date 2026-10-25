@@ -1,0 +1,27 @@
+<svg viewBox="0 0 680 372" width="100%" xmlns="http://www.w3.org/2000/svg">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="40" y="24" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a">开车时会发生什么（按时间顺序，右侧是仪表变化）</text>
+<rect x="60" y="40" width="290" height="56" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="80" y="60" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#1f2328" fill="#185FA5">1  上电启动</text>
+<text x="80" y="80" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#185FA5">拧钥匙 / 按启动按钮</text>
+<text x="370" y="60" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#854F0B">仪表通电自检：</text>
+<text x="370" y="80" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#854F0B">所有警告灯闪一下再熄灭</text>
+<line x1="205" y1="98" x2="205" y2="118" stroke="#185FA5" stroke-width="1.5"/>
+<rect x="60" y="124" width="290" height="56" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text x="80" y="144" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#1f2328" fill="#185FA5">2  挂 D 挡、踩油门</text>
+<text x="80" y="164" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#185FA5">车开始前进</text>
+<text x="370" y="144" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#854F0B">车速、转速从 0 上升</text>
+<text x="370" y="164" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#854F0B">档位显示 D，里程开始累加</text>
+<line x1="205" y1="182" x2="205" y2="202" stroke="#185FA5" stroke-width="1.5"/>
+<rect x="60" y="208" width="290" height="56" rx="8" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+<text x="80" y="228" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#1f2328" fill="#042C53">3  正常行驶中</text>
+<text x="80" y="248" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#042C53">司机一直在看仪表</text>
+<text x="370" y="228" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#854F0B">车速 60、转速 2000 左右</text>
+<text x="370" y="248" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#854F0B">水温升到 90，所有灯保持灭</text>
+<line x1="205" y1="266" x2="205" y2="286" stroke="#185FA5" stroke-width="1.5"/>
+<rect x="60" y="292" width="290" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text x="80" y="312" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#1f2328">4  停车熄火</text>
+<text x="80" y="332" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#5F5E5A">挂 P 挡，关掉电源</text>
+<text x="370" y="312" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#854F0B">仪表熄灭，车速转速归 0</text>
+<text x="370" y="332" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#854F0B">全车 ECU 陆续进入睡眠省电</text>
+</svg>

@@ -1,0 +1,541 @@
+# =============================================================================
+# 系统需求清单（SRS 摘录）—— 需求追溯的源头
+# =============================================================================
+# 【为什么需要这个文件】
+# 在 Tier1 的 System Validation 岗，测试不是"想到什么测什么"，而是
+# **每一条测试用例都要能追溯到一条需求**（Requirements Traceability）。
+#
+# 交付物形态：
+#   需求(REQ) ──追溯──► 测试用例 ──执行──► 结果 ──报告──► 客户
+#
+# 本清单模拟真实项目的 SRS 摘录。字段说明：
+#   id          需求编号（唯一，用例用 [Tags] 引用它）
+#   title       一句话需求
+#   description 详细描述（含具体数值/阈值——**可测性的关键**）
+#   source      需求来源（哪份规范的第几节，真实项目必填用于追溯）
+#   priority    High / Medium / Low
+#   method      验证方法（ISO 术语）：
+#                 Test=测试  Analysis=分析  Inspection=检查  Demonstration=演示
+#   verify      具体验证手段（怎么测）
+#
+# 运行 `python trace_matrix.py` 可以生成"需求 ↔ 用例 ↔ 结果"追溯矩阵，
+# 自动报告：哪些需求未被覆盖、哪些用例没有关联需求、每条需求的通过情况。
+# =============================================================================
+
+project: Instrument Cluster & Cockpit System（仿真座舱）
+revision: "v1.0 / 2026-10"
+
+requirements:
+
+  # ---------------------------------------------------------------- 通信与信号
+  - id: REQ-CAN-001
+    title: 发动机数据报文周期发送
+    description: ECU 应以 100ms 周期发送 EngineData(0x100)，含 VehicleSpeed/EngineSpeed/CoolantTemp/ThrottlePosition
+    source: SRS-3.2.1
+    priority: High
+    method: Test
+    verify: 录制总线，断言周期均值 100ms 且抖动在容差内
+
+  - id: REQ-CAN-002
+    title: 仪表数据报文周期发送
+    description: ECU 应以 200ms 周期发送 ClusterData(0x200)，含 GearPosition/FuelLevel/Odometer/BatteryVoltage
+    source: SRS-3.2.2
+    priority: High
+    method: Test
+    verify: 录制总线，断言周期均值 200ms
+
+  - id: REQ-CAN-003
+    title: 警告灯状态报文周期发送
+    description: ECU 应以 500ms 周期发送 TelltaleStatus(0x300)，12 个警告灯位图
+    source: SRS-3.2.3
+    priority: High
+    method: Test
+    verify: 断言周期 500ms；无故障时所有位为 0
+
+  - id: REQ-CAN-004
+    title: 车速信号范围合理
+    description: VehicleSpeed 物理范围 0~655.35 km/h，正常行驶应在目标值 ±10 内
+    source: SRS-4.1.1
+    priority: High
+    method: Test
+    verify: 读信号并断言范围
+
+  - id: REQ-CAN-005
+    title: 转速与车速联动
+    description: EngineSpeed = max(800, VehicleSpeed × 80)，容差 5%
+    source: SRS-4.1.2
+    priority: High
+    method: Test
+    verify: 同时读车速与转速，断言比例关系（联动断言）
+
+  - id: REQ-CAN-006
+    title: 档位随车速切换
+    description: 车速 > 1 km/h 时 GearPosition 应为 D(3)，否则为 P(0)
+    source: SRS-4.2.1
+    priority: Medium
+    method: Test
+    verify: 等待档位变 3
+
+  - id: REQ-CAN-007
+    title: 里程单调累积
+    description: Odometer 应随行驶单调不减（累加器不可回退）
+    source: SRS-4.2.2
+    priority: Medium
+    method: Test
+    verify: 连续采样 3 次，断言单调性
+
+  - id: REQ-CAN-008
+    title: 水温一阶惯性趋近
+    description: CoolantTemp 从初值一阶惯性趋近目标值，正常区间 80~105℃
+    source: SRS-4.1.3
+    priority: Medium
+    method: Test
+    verify: 等待水温稳定在正常区间
+
+  - id: REQ-CAN-009
+    title: 总线周期健康度
+    description: 三条周期报文的周期均值与抖动必须在容差内（抖动过大影响依赖节点）
+    source: SRS-3.2.4
+    priority: High
+    method: Test
+    verify: Period And Jitter Should Be Within 断言
+
+  - id: REQ-CAN-010
+    title: Trace 可导出工业格式
+    description: 支持导出 ASC/BLF（CANoe/CANalyzer 可直接打开），供失败分析
+    source: SRS-9.1.1
+    priority: Medium
+    method: Test
+    verify: 导出后回读校验（ASC 解析 + BLF 用工业库回读）
+
+  - id: REQ-CAN-011
+    title: 信号编解码正确性
+    description: DBC 定义的全部信号应能正确编码发送并被接收端正确解码（含边界值与位域极值）
+    source: SRS-4.5.1
+    priority: High
+    method: Test
+    verify: 由 DBC 自动生成的边界值/等价类/pairwise 用例（generate_testcases.py）
+
+  # ---------------------------------------------------------------- 警告灯
+  - id: REQ-TTL-001
+    title: 无故障时警告灯全灭
+    description: 无故障状态下 12 个警告灯全部熄灭
+    source: SRS-5.1.1
+    priority: High
+    method: Test
+    verify: All Telltales Should Be Off
+
+  - id: REQ-TTL-002
+    title: 灯光自检点亮全部警告灯
+    description: 例程 31 01 0301 应点亮全部 12 个警告灯（含 SeatbeltWarning），持续 4 秒
+    source: SRS-5.2.1
+    priority: High
+    method: Test
+    verify: 启动例程 + 遍历 12 个灯名断言
+
+  - id: REQ-TTL-003
+    title: 自检结束后灯自动熄灭
+    description: 灯光自检结束后警告灯应全部熄灭（不可"亮完不复位"）
+    source: SRS-5.2.2
+    priority: Medium
+    method: Test
+    verify: 等自检结束 + All Telltales Should Be Off
+
+  # ---------------------------------------------------------------- 诊断服务
+  - id: REQ-DIAG-001
+    title: 默认会话可读标识数据
+    description: 默认会话下可读 F187(零件号)/F189(序列号)/F18A(供应商)
+    source: SRS-6.1.1
+    priority: High
+    method: Test
+    verify: Read DID As ASCII 并断言内容
+
+  - id: REQ-DIAG-002
+    title: VIN 多帧读取
+    description: F190(VIN, 17 字节) 响应超过 8 字节，须走 ISO-TP 多帧并正确重组
+    source: SRS-6.1.2
+    priority: High
+    method: Test
+    verify: 读取后断言值相等且长度 17
+
+  - id: REQ-DIAG-003
+    title: 会话切换与 P2 参数声明
+    description: 10 03 进扩展会话，响应含 P2=50ms、P2*=5000ms
+    source: SRS-6.2.1
+    priority: High
+    method: Test
+    verify: 断言响应 payload 含 00 32 01 F4
+
+  - id: REQ-DIAG-004
+    title: 安全访问种子密钥握手
+    description: 27 01 取种子，27 02 送密钥（seed XOR 0x5A5A5A5A），正确才解锁
+    source: SRS-6.3.1
+    priority: High
+    method: Test
+    verify: Security Unlock 后写操作应成功
+
+  - id: REQ-DIAG-005
+    title: 写操作需会话+解锁双重授权
+    description: 写 DID 必须在扩展会话且已解锁，两者都满足才执行
+    source: SRS-6.3.2
+    priority: High
+    method: Test
+    verify: 扩展会话+解锁后写成功，并回读验证
+
+  - id: REQ-DIAG-006
+    title: 未解锁写操作被拒绝
+    description: 扩展会话但未解锁时写操作返回 NRC 0x33
+    source: SRS-6.3.3
+    priority: High
+    method: Test
+    verify: 断言 NRC 0x33
+
+  - id: REQ-DIAG-007
+    title: 默认会话受限操作被拒绝
+    description: 默认会话下写操作/例程返回 NRC 0x7F
+    source: SRS-6.3.4
+    priority: High
+    method: Test
+    verify: 断言 NRC 0x7F
+
+  - id: REQ-DIAG-008
+    title: 未知参数返回超范围
+    description: 读取不存在的 DID 返回 NRC 0x31
+    source: SRS-6.4.1
+    priority: Medium
+    method: Test
+    verify: 读 F999 断言 NRC 0x31
+
+  - id: REQ-DIAG-009
+    title: S3 超时回退默认会话
+    description: 非默认会话静默超过 5 秒应回退默认会话并锁定安全访问
+    source: SRS-6.2.2
+    priority: High
+    method: Test
+    verify: 静默 6 秒后写操作应报 NRC 0x7F
+
+  - id: REQ-DIAG-010
+    title: 保活维持会话
+    description: 3E 00 定期发送（或任何诊断请求）应维持会话不被回退
+    source: SRS-6.2.3
+    priority: Medium
+    method: Test
+    verify: 每 2 秒保活持续 6 秒后仍可写
+
+  - id: REQ-DIAG-011
+    title: 响应时间符合 P2
+    description: 诊断响应时间应小于声明的 P2(50ms)，多点采样后均值与超标次数达标
+    source: SRS-6.5.1
+    priority: High
+    method: Test
+    verify: 5 次采样，均值 < 50ms 且超标 ≤1 次
+
+  - id: REQ-DIAG-012
+    title: 抑制正响应
+    description: sub-function 最高位置 1（如 3E 80）时 ECU 执行但不回复
+    source: SRS-6.1.3
+    priority: Medium
+    method: Test
+    verify: 期望超时 + 后续请求仍正常（证明存活）
+
+  - id: REQ-DIAG-013
+    title: 复位清除权限
+    description: 11 01 复位后回默认会话且安全访问锁定，权限不残留
+    source: SRS-6.6.1
+    priority: High
+    method: Test
+    verify: 复位后写操作应报 NRC 0x7F
+
+  - id: REQ-DIAG-014
+    title: 通信控制暂停周期报文
+    description: 28 01 01 停发周期报文（保留诊断），28 00 恢复
+    source: SRS-6.7.1
+    priority: Medium
+    method: Test
+    verify: 暂停后总线上无助测信号；恢复后周期性重现
+
+  - id: REQ-DIAG-015
+    title: 未知服务返回不支持
+    description: 请求未实现的诊断服务（SID）应返回 NRC 0x11 serviceNotSupported
+    source: SRS-6.4.2
+    priority: Medium
+    method: Test
+    verify: 发未实现 SID 断言 NRC 0x11
+
+  - id: REQ-DIAG-016
+    title: 例程控制服务
+    description: 31 01 启动例程（自检/灯光测试），31 03 查询结果，结果 00=成功
+    source: SRS-6.8.1
+    priority: Medium
+    method: Test
+    verify: 启动自检例程并断言正响应
+
+  # ---------------------------------------------------------------- 故障管理
+  - id: REQ-DTC-001
+    title: 故障确认后记录 confirmed
+    description: 故障条件持续满足时，DTC 应经状态机转为 confirmed（连续 2 个诊断周期）
+    source: SRS-7.1.1
+    priority: High
+    method: Test
+    verify: mask=08 查询应包含 P0116
+
+  - id: REQ-DTC-002
+    title: 清除 DTC
+    description: 14 FF FF FF 应清空所有 DTC 记录，数量归零
+    source: SRS-7.2.1
+    priority: High
+    method: Test
+    verify: 清除后 Read DTC Count 应为 0
+
+  - id: REQ-DTC-003
+    title: 故障仍在时重新确认
+    description: 清除后若故障条件仍满足，系统应重新检测并记录（清码不等于修复）
+    source: SRS-7.2.2
+    priority: High
+    method: Test
+    verify: 清除后轮询等待 P0116 重新出现
+
+  - id: REQ-DTC-004
+    title: DTC 与警告灯联动
+    description: DTC confirmed 时对应警告灯应点亮，仪表与诊断视角一致
+    source: SRS-7.3.1
+    priority: High
+    method: Test
+    verify: 同时断言灯亮 + DTC confirmed
+
+  - id: REQ-DTC-005
+    title: 快照记录故障现场
+    description: DTC 记录时应保存故障时刻的快照数据（车速/水温等冻结帧），支持 19 04 读取
+    source: SRS-7.4.1
+    priority: Medium
+    method: Test
+    verify: 19 04 读取快照并断言含故障时刻的车速
+
+  - id: REQ-DTC-006
+    title: DTC 检测控制
+    description: 85 02 暂停 DTC 检测 / 85 01 恢复，用于台架测试避免无关故障污染
+    source: SRS-7.5.1
+    priority: Medium
+    method: Test
+    verify: 发送 85 02/85 01 断言正响应
+
+  # ---------------------------------------------------------------- 刷写
+  - id: REQ-FLS-001
+    title: 请求下载
+    description: 编程会话+解锁后 34 请求下载应返回单块上限（74 20 + maxBlockLength）
+    source: SRS-8.1.1
+    priority: High
+    method: Test
+    verify: 断言正响应并解析 maxBlockLength
+
+  - id: REQ-FLS-002
+    title: 分块传输按序确认
+    description: 36 传输数据块须回显块序号；块序号必须严格递增
+    source: SRS-8.1.2
+    priority: High
+    method: Test
+    verify: 传输两块并断言逐块确认
+
+  - id: REQ-FLS-003
+    title: 完整性校验
+    description: 31 01 FF00 应校验接收字节数与声明大小一致，结果 00=通过
+    source: SRS-8.2.1
+    priority: High
+    method: Test
+    verify: 完整流程后 Integrity Check Result = 0
+
+  - id: REQ-FLS-004
+    title: 块序号错乱拒绝
+    description: 块序号跳号时返回 NRC 0x73（防止丢块导致固件损坏）
+    source: SRS-8.3.1
+    priority: High
+    method: Test
+    verify: 序号 1→3 断言 NRC 0x73
+
+  - id: REQ-FLS-005
+    title: 字节数不足报校验失败
+    description: 声明大小与实际传输不符时完整性校验返回失败（01）
+    source: SRS-8.3.2
+    priority: High
+    method: Test
+    verify: 声明 128 只传 64，断言结果为 1
+
+  - id: REQ-FLS-006
+    title: 目标地址越界拒绝
+    description: 请求下载地址超出 App 分区范围返回 NRC 0x31
+    source: SRS-8.3.3
+    priority: Medium
+    method: Test
+    verify: 地址 0x09000000 断言 NRC 0x31
+
+  - id: REQ-FLS-008
+    title: 刷写序列错误拒绝
+    description: 未请求下载（0x34）就直接传输数据（0x36）应返回 NRC 0x24 requestSequenceError
+    source: SRS-8.3.4
+    priority: Medium
+    method: Test
+    verify: 直接发 0x36 断言 NRC 0x24
+
+  - id: REQ-FLS-007
+    title: 失败后可重新刷写
+    description: 一次失败后复位清理，应能重新完成完整刷写流程
+    source: SRS-8.4.1
+    priority: High
+    method: Test
+    verify: 失败→复位→重新完整刷写成功
+
+  # ---------------------------------------------------------------- HMI 与座舱
+  - id: REQ-HMI-001
+    title: 仪表车速与总线一致
+    description: 稳态下仪表显示车速与总线信号偏差 ≤3 km/h
+    source: SRS-10.1.1
+    priority: High
+    method: Test
+    verify: 等稳态后比较（跨系统一致性）
+
+  - id: REQ-HMI-002
+    title: 车机媒体信息同步
+    description: 车机媒体状态经 CAN 0x400 广播后，仪表应在 5 秒内同步显示曲目
+    source: SRS-10.2.1
+    priority: High
+    method: Test
+    verify: 设置车机状态 + 广播 + 轮询断言仪表显示
+
+  - id: REQ-HMI-003
+    title: 车机导航信息同步
+    description: 导航剩余距离/转向提示应在仪表同步显示
+    source: SRS-10.2.2
+    priority: Medium
+    method: Test
+    verify: 设置导航状态 + 断言距离低于阈值
+
+  - id: REQ-HMI-004
+    title: 车机空调设置同步
+    description: 车机空调温度设置应同步到仪表显示
+    source: SRS-10.2.3
+    priority: Medium
+    method: Test
+    verify: 设置 26℃ + 断言仪表显示 26
+
+  - id: REQ-HMI-006
+    title: 行程电脑累计
+    description: 行程电脑的行驶里程/时长应随行驶累计（trip 与总里程独立）
+    source: SRS-10.4.1
+    priority: Low
+    method: Test
+    verify: Trip Should Be Accumulating
+
+  - id: REQ-HMI-007
+    title: 双屏数据一致性
+    description: 车机屏与仪表屏显示的同一数据源（媒体/导航/空调）应保持一致
+    source: SRS-10.5.1
+    priority: High
+    method: Test
+    verify: 同时读取两屏状态并断言一致
+
+  - id: REQ-HMI-005
+    title: 座舱操作不影响动力域
+    description: 座舱大量操作不应影响动力域报文周期（域隔离）
+    source: SRS-10.3.1
+    priority: High
+    method: Test
+    verify: 座舱操作后断言 0x100 周期与抖动仍达标
+
+  # ---------------------------------------------------------------- 车机 Android
+  - id: REQ-ADB-001
+    title: 车机设备在线可读属性
+    description: 通过 ADB 可确认设备连接并读取系统属性（型号/版本）
+    source: SRS-11.1.1
+    priority: Medium
+    method: Test
+    verify: Device Should Be Connected + Get Prop
+
+  - id: REQ-ADB-002
+    title: 应用安装与启动
+    description: 支持安装/卸载 APK，启动指定 Activity 并断言前台焦点
+    source: SRS-11.2.1
+    priority: Medium
+    method: Test
+    verify: 安装 → 启动 → 断言 Current Focus
+
+  - id: REQ-ADB-004
+    title: 输入事件模拟
+    description: 支持模拟点击/滑动/按键事件（用于车机 GUI 交互自动化）
+    source: SRS-11.2.2
+    priority: Low
+    method: Test
+    verify: Tap/Send Keyevent 后断言状态变化
+
+  - id: REQ-ADB-003
+    title: 车机状态可断言
+    description: 电量、前台应用等状态可读取并断言
+    source: SRS-11.3.1
+    priority: Low
+    method: Test
+    verify: Battery Level Should Be Greater Than
+
+  # ---------------------------------------------------------------- 鲁棒性（预留）
+  - id: REQ-RBX-001
+    title: 低压工况功能降级
+    description: 供电电压降至 9V（冷启动临界）时，ECU 应报电压过低 DTC（P0562）并保持核心功能
+    source: SRS-12.1.1
+    priority: High
+    method: Test
+    verify: 测试激励设置电压 9V，断言 P0562 记录
+
+  - id: REQ-RBX-002
+    title: 过压工况保护
+    description: 供电电压升至 16V 时应记录过压 DTC 并保护输出
+    source: SRS-12.1.2
+    priority: Medium
+    method: Test
+    verify: 设置 16V，断言过压 DTC
+
+  - id: REQ-RBX-003
+    title: 信号超时降级策略
+    description: 车速信号丢失（停发）时，仪表应保持最后有效值而非归零
+    source: SRS-12.2.1
+    priority: High
+    method: Test
+    verify: 停发 0x100 后断言仪表车速不归零
+
+  - id: REQ-RBX-004
+    title: 报文丢失容错
+    description: 总线丢帧率升高时，接收节点应容错且不崩溃（后续报文恢复正常）
+    source: SRS-12.2.2
+    priority: Medium
+    method: Test
+    verify: 设置丢帧率后系统仍可响应诊断
+
+  # ---------------------------------------------------------------- 电源与网络管理（预留）
+  - id: REQ-PWR-001
+    title: 网络管理睡眠就绪指示
+    description: IGN OFF 后节点应停止发送应用报文，并在 NM 报文中置"睡眠就绪"位
+    source: SRS-13.1.1
+    priority: High
+    method: Test
+    verify: 切 IGN OFF，断言 NM 报文睡眠就绪位为 1
+
+  - id: REQ-PWR-002
+    title: 总线静默后进入睡眠
+    description: 所有节点睡眠就绪且总线静默后，各节点应停止全部周期报文进入睡眠
+    source: SRS-13.1.2
+    priority: High
+    method: Test
+    verify: 静默后录制总线，断言无周期报文
+
+  - id: REQ-PWR-003
+    title: CAN 唤醒
+    description: 睡眠状态下收到任意 CAN 报文应唤醒节点并恢复周期报文发送
+    source: SRS-13.2.1
+    priority: High
+    method: Test
+    verify: 发唤醒帧后断言周期报文恢复
+
+  - id: REQ-PWR-004
+    title: 睡眠期间静默无干扰
+    description: 睡眠状态下节点不应发送任何报文（包括 NM），保证静态电流指标
+    source: SRS-13.2.2
+    priority: Medium
+    method: Test
+    verify: 睡眠后录制 N 秒，断言零帧

@@ -1,0 +1,9 @@
+# robot_framework 车载自动化学习项目依赖
+# Python 3.10+（开发验证环境：3.13）
+python-can>=4.5          # CAN 总线（udp_multicast 虚拟总线 / 真实硬件）
+cantools>=44             # DBC 解析与信号编解码
+robotframework>=7.0      # Robot Framework 测试框架
+robotframework-pythonlibcore>=4.4   # RF 动态库支持
+PySide6>=6.6             # 仪表盘 GUI（headless 模式可免）
+msgpack>=1.0             # python-can udp_multicast 的序列化依赖（必装）
+PyYAML>=6.0              # 需求清单(requirements.yaml)与配置解析（需求追溯矩阵用）

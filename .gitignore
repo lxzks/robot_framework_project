@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 虚拟环境（用 requirements.txt 管理）
+venv/
+.venv/
+envs/
+
+# 原子写残留的临时文件（被强杀时可能留下，程序启动会自动清理）
+simulators/tmp*.tmp
+
+# 运行时状态文件（仿真进程动态生成）
+simulators/dashboard_state.json
+simulators/adb_device_state.json
+simulators/android_gui.log
+simulators/android_gui.pid
+simulators/agui_test.log
+
+# 测试输出（每次运行重新生成）
+results/
+output.xml
+log.html
+report.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# mkstemp 原子写残留（异常路径）
+simulators/*.tmp
+*.tmp
+
+# AI 助手的工作记忆（含个人工作日志，绝不外传）
+.workbuddy/

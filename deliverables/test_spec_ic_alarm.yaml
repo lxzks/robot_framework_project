@@ -1,0 +1,154 @@
+# =============================================================================
+# 测试规范（Test Specification）
+# =============================================================================
+# 【这是什么】System Validation 岗最核心的交付物：把"需求"翻译成"可执行、
+# 可复现、可评审的测试项"。真实项目里通常维护在 Jama / DOORS / Codebeamer /
+# Excel 里；本文件用 YAML 表达同样的结构，便于机器解析与版本管理。
+#
+# 【写法要点】
+#   1. 每个测试项必须挂需求 ID（requirement:）—— 这是追溯链的源头
+#   2. precondition 要写清"测试前系统处于什么状态"（可复现性的关键）
+#   3. steps 是**人**执行的步骤；automation 是自动化实现（可空 = 手工测试）
+#   4. expected 必须是**可判定的**（有具体数值/状态，不写"显示正常"）
+#   5. 同一功能的正向/负向/边界三项都要覆盖（见 17 章测试点五问）
+#
+# 【与本项目的关系】
+#   requirement 字段 ↔ requirements/requirements.yaml 里的需求 ID
+#   automation 字段  ↔ .robot 文件里的用例（用 [Tags] 反向关联）
+#   校验：python test_spec_check.py（检查每个测试项的需求是否真实存在）
+# =============================================================================
+
+spec:
+  id: TS-IC-ALARM-001
+  title: 仪表报警与故障管理 测试规范
+  version: v1.2
+  date: 2026-10
+  author: System Validation
+  scope: 验证仪表盘在动力域故障（水温/电压）发生时的报警显示、故障记录与恢复行为
+  related_documents:
+    - SRS-仪表与座舱系统需求规范 v2.1
+    - ISO 14229-1:2020（UDS）
+    - ISO 15031-6（DTC 定义）
+  environment:
+    bench: 虚拟座舱台架（ECU 仿真 + 仪表仿真 + 诊断仪）
+    power: 可编程电源 9~16V（仿真通过工程模式 DID F1B0 实现）
+    bus: CAN 500kbps（仿真为 UDP 组播虚拟总线）
+
+# 测试项清单（真实项目里每条对应 Jama 里的一个 Test Case 条目）
+test_cases:
+
+  - id: TC-ALM-001
+    title: 水温超限应点亮水温报警灯并记录故障
+    requirement: REQ-DTC-001
+    related_requirements: [REQ-DTC-004]
+    method: Test              # Test / Analysis / Inspection / Demonstration
+    priority: High
+    precondition: ECU 以 coolant=125 启动（超 120℃ 阈值），系统上电且总线通信正常
+    steps:
+      - 等待水温从初值爬升至 120℃ 以上（一阶惯性，约 15 秒）
+      - 等待故障确认周期（连续 2 个诊断周期）
+      - 观察仪表警告灯状态
+    expected:
+      - 仪表水温报警灯点亮（TelltaleStatus.CoolantTempHigh = 1）
+      - DTC P0116 记录为 confirmed 状态（状态掩码 08 可读到）
+    automation: scenarios/04_dtc_lifecycle.robot::故障条件持续时应记录为 confirmed 状态
+
+  - id: TC-ALM-002
+    title: 无故障时所有警告灯应保持熄灭
+    requirement: REQ-TTL-001
+    method: Test
+    priority: High
+    precondition: ECU 正常工况（水温 90℃、电压 13.8V），无故障码
+    steps:
+      - 系统上电并稳定运行 5 秒
+      - 读取仪表警告灯列表
+    expected:
+      - 12 个警告灯全部熄灭（telltales_lit 为空列表）
+    note: 这是**负向基线**用例 —— 很多现场问题（灯常亮）都源于此未测
+    automation: scenarios/02_telltale_matrix.robot::正常行驶时所有警告灯应熄灭
+
+  - id: TC-ALM-003
+    title: 清除 DTC 后报警灯应熄灭但故障条件仍可重新检测
+    requirement: REQ-DTC-002
+    related_requirements: [REQ-DTC-003]
+    method: Test
+    priority: High
+    precondition: P0116 已 confirmed 且水温报警灯点亮
+    steps:
+      - 发送 14 FF FF FF 清除 DTC
+      - 观察仪表警告灯
+      - 清除后继续保持故障条件（水温 >120℃），等待 3 个诊断周期
+    expected:
+      - 清除后 DTC 数量归零，水温灯熄灭（非保持型灯）
+      - 故障条件仍在时，P0116 应在数秒内重新记录为 confirmed
+    note: 第 2 条验证"清除没有破坏检测能力"—— 对应真实现象"清码后过几天又亮"
+    automation: scenarios/04_dtc_lifecycle.robot::故障条件仍在时 DTC 应重新记录
+
+  - id: TC-ALM-004
+    title: 低压工况（9V）应记录电压过低故障
+    requirement: REQ-RBX-001
+    method: Test
+    priority: High
+    precondition: 系统上电（14V），扩展会话已解锁（写工程模式 DID 需要权限）
+    steps:
+      - 通过 DID F1B0 设置供电电压 = 9V
+      - 等待 2 个诊断周期
+      - 读取 DTC 列表
+    expected:
+      - P0562（系统电压过低）记录为 confirmed
+      - 总线 BatteryVoltage 信号 < 10.5V
+    note: 9V 对应低温冷启动临界电压，是 OEM 必测工况
+    automation: scenarios/11_fault_injection.robot::低压工况应记录电压过低故障并点亮电池灯
+
+  - id: TC-ALM-005
+    title: 水温信号丢失时仪表应保持最后有效值（降级验证）
+    requirement: REQ-RBX-003
+    method: Test
+    priority: High
+    precondition: 车速稳定在 60km/h（仪表显示正常）
+    steps:
+      - 通过 DID F1B0 停发 EngineData(0x100) 报文
+      - 等待 2 秒
+      - 读取仪表显示车速
+    expected:
+      - 仪表车速**不归零**，保持最后有效值
+    note: 显示归零会让驾驶员误判车速；真实规范通常还要求超时数秒后显示"---"
+    automation: scenarios/11_fault_injection.robot::车速信号丢失时仪表应保持最后有效值
+
+  - id: TC-ALM-006
+    title: 熄火后节点应协商进入睡眠且总线完全静默
+    requirement: REQ-PWR-002
+    related_requirements: [REQ-PWR-001, REQ-PWR-004]
+    method: Test
+    priority: High
+    precondition: 系统正常运行（IGN ON）
+    steps:
+      - BCM 广播电源模式 = OFF（CAN 0x600）
+      - 等待静默判定时长
+      - 录制总线 3 秒
+    expected:
+      - IGN OFF 后应用报文（0x100/0x200/0x300）立即停发
+      - NM 报文置"睡眠就绪"位
+      - 睡眠后总线**零帧**（暗电流指标前提）
+    note: 任何一个节点偷偷发报文都会导致整车亏电（车主第二天打不着火）
+    automation: scenarios/12_power_management.robot::总线静默后节点应进入睡眠（总线零帧）
+
+  - id: TC-ALM-007
+    title: 睡眠状态下任意 CAN 活动应唤醒节点
+    requirement: REQ-PWR-003
+    method: Test
+    priority: High
+    precondition: 节点已进入睡眠（总线静默）
+    steps:
+      - 发送任意 CAN 报文（模拟车门/遥控唤醒）
+      - 观察应用报文恢复情况
+    expected:
+      - 节点在 1 秒内唤醒并恢复周期报文发送
+    automation: scenarios/12_power_management.robot::CAN 唤醒帧应唤醒节点并恢复应用报文
+
+# 未覆盖项说明（真实项目中必须显式声明，而不是留空）
+not_applicable_or_deferred:
+  - requirement: REQ-DTC-005
+    reason: 快照（冻结帧）服务已实现并已验证（03 套件），本条为历史遗留记录
+  - requirement: REQ-ADB-004
+    reason: 输入事件模拟仅用于开发自测，不属于系统验证范围（不在本 Spec 内）

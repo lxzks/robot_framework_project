@@ -1,0 +1,63 @@
+VERSION "vehicle-sim-dbc-1.0"
+
+BS_:
+
+BU_: ECU CLUSTER TESTER IVI
+
+
+BO_ 256 EngineData: 8 ECU
+ SG_ VehicleSpeed : 0|16@1+ (0.01,0) [0|655.35] "km/h" CLUSTER,TESTER
+ SG_ EngineSpeed : 16|16@1+ (0.25,0) [0|16000] "rpm" CLUSTER,TESTER
+ SG_ CoolantTemp : 32|8@1+ (1,-40) [-40|215] "degC" CLUSTER,TESTER
+ SG_ ThrottlePosition : 40|8@1+ (0.392157,0) [0|100] "%" CLUSTER,TESTER
+
+
+BO_ 512 ClusterData: 8 ECU
+ SG_ GearPosition : 0|4@1+ (1,0) [0|15] "" CLUSTER,TESTER
+ SG_ FuelLevel : 4|8@1+ (0.392157,0) [0|100] "%" CLUSTER,TESTER
+ SG_ Odometer : 24|24@1+ (1,0) [0|16777215] "km" CLUSTER,TESTER
+ SG_ BatteryVoltage : 56|8@1+ (0.1,0) [0|25.4] "V" CLUSTER,TESTER
+
+
+BO_ 768 TelltaleStatus: 2 ECU
+ SG_ MilWarning : 0|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ OilPressureLow : 1|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ CoolantTempHigh : 2|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ BatteryLow : 3|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ AbsFault : 4|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ AirbagFault : 5|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ SeatbeltWarning : 6|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ TurnLeft : 8|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ TurnRight : 9|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ HighBeam : 10|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ LowBeam : 11|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ ParkBrake : 12|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+
+
+VAL_ 512 GearPosition 0 "P" 1 "R" 2 "N" 3 "D" 4 "S" 5 "L" ;
+
+
+BO_ 1024 MediaPhoneData: 8 IVI
+ SG_ MediaStatus : 0|2@1+ (1,0) [0|3] "" CLUSTER,TESTER
+ SG_ TrackIndex : 2|8@1+ (1,0) [0|255] "" CLUSTER,TESTER
+ SG_ Volume : 10|8@1+ (1,0) [0|100] "%" CLUSTER,TESTER
+ SG_ CallStatus : 18|2@1+ (1,0) [0|3] "" CLUSTER,TESTER
+ SG_ CallerIndex : 20|8@1+ (1,0) [0|255] "" CLUSTER,TESTER
+ SG_ OutdoorTemp : 28|8@1- (1,-40) [-40|87] "degC" CLUSTER,TESTER
+ SG_ AcOn : 36|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ HvacTemp : 37|7@1+ (1,0) [16|32] "degC" CLUSTER,TESTER
+
+
+BO_ 1280 NaviHvacData: 8 IVI
+ SG_ NaviTurn : 0|3@1+ (1,0) [0|7] "" CLUSTER,TESTER
+ SG_ NaviDistance : 3|16@1+ (1,0) [0|65535] "m" CLUSTER,TESTER
+ SG_ StreetIndex : 19|8@1+ (1,0) [0|255] "" CLUSTER,TESTER
+ SG_ FanLevel : 27|4@1+ (1,0) [0|7] "" CLUSTER,TESTER
+ SG_ SeatHeat : 31|2@1+ (1,0) [0|3] "" CLUSTER,TESTER
+ SG_ Recirculate : 33|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ Defrost : 34|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+
+
+VAL_ 1024 MediaStatus 0 "STOP" 1 "PLAY" 2 "PAUSE" 3 "NEXT" ;
+VAL_ 1024 CallStatus 0 "NONE" 1 "INCOMING" 2 "ACTIVE" ;
+VAL_ 1280 NaviTurn 0 "NONE" 1 "LEFT" 2 "RIGHT" 3 "STRAIGHT" 4 "SLIGHT_LEFT" 5 "SLIGHT_RIGHT" 6 "UTURN" 7 "ARRIVE" ;
