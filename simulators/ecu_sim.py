@@ -55,18 +55,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from bus import VirtualCanBus                                    # noqa: E402
 from dtc_manager import (                                        # noqa: E402
-    BIT_CONFIRMED, BIT_PENDING, DtcManager, FAULT_CATALOG,
-    status_to_names,
+    DtcManager, FAULT_CATALOG, status_to_names,
 )
 from uds_lib import (                                            # noqa: E402
     SID_CLEAR_DTC, SID_COMMUNICATION_CONTROL, SID_CONTROL_DTC_SETTING,
-    SID_DIAGNOSTIC_SESSION_CONTROL, SID_ECU_RESET, SID_IO_CONTROL,
+    SID_DIAGNOSTIC_SESSION_CONTROL, SID_ECU_RESET,
     SID_READ_DID, SID_READ_DTC, SID_REQUEST_DOWNLOAD,
     SID_ROUTINE_CONTROL, SID_SECURITY_ACCESS, SID_TESTER_PRESENT,
     SID_TRANSFER_DATA, SID_TRANSFER_EXIT, SID_WRITE_DID,
     SESSION_DEFAULT, SESSION_EXTENDED, SESSION_PROGRAMMING,
     IsoTpReceiver, IsoTpSender,
-    build_flow_control, negative_response, parse_response,
+    build_flow_control, negative_response,
     positive_response, string_to_dtc,
 )
 

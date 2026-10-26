@@ -6,21 +6,26 @@
 
 ---
 
-## 0. 你现在的真实状态（先确认，避免重复劳动）
+## 0. 你现在的真实状态（2026-10-25 更新：**已成功推送到 GitHub** ✅）
 
-| 项目 | 状态 | 结论 |
-|---|---|---|
-| SSH 密钥 | ✅ 已有 `~/.ssh/id_ed25519`（2025-07-05 创建） | **不用重新生成** |
-| 密钥是否已配到 GitHub | ✅ **已配好**（测试输出 `Hi lxzks! You've successfully authenticated`） | **第 1 节可以直接跳过** |
-| GitHub 用户名 | `lxzks` | 配置 git 身份时用这个 |
-| 邮箱（与密钥关联） | `1520313676@qq.com` | 配置 git 身份时用这个 |
-| SSH 客户端 | ✅ OpenSSH 10.3 | 正常 |
-| Git 版本 | ✅ 2.55.0（WorkBuddy 自带 PortableGit） | 正常 |
-| 本地仓库 | ⚠️ 已 `git init`，但**没有任何提交**（`.git` 只有 61K） | 可以安全删掉重来 |
-| 远程仓库 | ❌ 还没有 | 第 5 节去 GitHub 建 |
+| 项目 | 状态 |
+|---|---|
+| SSH 密钥 | ✅ 已有 `~/.ssh/id_ed25519`，且已配到 GitHub（`Hi lxzks!` 测试通过） |
+| GitHub 用户名 | `lxzks` |
+| 邮箱 | `1520313676@qq.com` |
+| git 身份 | ✅ 已配置（全局） |
+| 本地仓库 | ✅ 已 init，分支已改名 **main** |
+| 提交历史 | ✅ `9d04a00`(merge) ← `1657fee new commit` + `ae49d80 Initial commit` |
+| 远程仓库 | ✅ `git@github.com:lxzks/robot_framework_project.git` |
+| 同步状态 | ✅ 本地 HEAD == origin/main（**122 个文件已推送**） |
+| 分支跟踪 | ✅ `main → origin/main` |
 
-> 💡 **一句话**：SSH 那块你其实已经毕业了。第 1 节是"完整知识"（想学就看），
-> **实际动手从第 2 节开始**。
+> 🎉 **结论：你已经完成了从零到推送的全流程。** 下面第 1~6 节是"完整知识回顾",
+> **实际动手从第 7 节"日常循环"开始**。
+
+**但留了一个小尾巴**（第 11 节坑 5 会讲）：
+本地的第一个提交信息是 `new commit` —— 不规范。**面试官会点开看**。
+不用回头改（改要 force push，风险大于收益），**从下一次提交开始写规范就行**。
 
 ---
 
@@ -470,6 +475,70 @@ git clone <地址>                        # 克隆别人的仓库
 
 ---
 
+### 8.5 怎么查 / 改 / 切换"关联的是哪个仓库"
+
+**先记一个核心概念**：
+
+> ❌ 不存在"关联到 GitHub 账号"这回事
+> ✅ 只关联到**某个具体仓库的地址**。`origin` 只是这个地址的名字。
+
+```
+你的 GitHub 账号 lxzks
+├── repo-A                    ← 地址：git@github.com:lxzks/repo-A.git
+├── repo-B
+└── vehicle-test-framework    ← 这个项目只能指向其中一个
+
+本地文件夹 robot_framework/.git
+    └── origin = git@github.com:lxzks/robot_framework_project.git
+```
+
+**三个查看命令**：
+
+| 我想知道 | 命令 |
+|---|---|
+| 这个项目关联了哪个远程？ | `git remote -v` |
+| `origin` 具体指向哪个地址？ | `git config --get remote.origin.url` |
+| 本地分支在跟踪哪个远程分支？ | `git branch -vv` |
+
+**空输出说明什么**：`git remote -v` 没输出 = **这个项目还没关联任何远程仓库**（`git push` 会报错）。
+
+**关联到某个仓库（核心就这一条）**：
+
+```bash
+git remote add origin git@github.com:lxzks/【仓库名】.git
+                                          # ↑ 这个仓库名决定关联到哪一个
+```
+
+**关联错了怎么改**（不用删仓库）：
+
+```bash
+git remote set-url origin git@github.com:lxzks/正确的仓库名.git
+```
+
+**一个本地仓库能不能关联多个远程？**
+
+可以，但要起不同名字：
+
+```bash
+git remote add backup git@github.com:lxzks/另一个仓库.git
+git push backup main        # 推到 backup
+git push origin main        # 推到 origin（默认）
+```
+
+> 💡 **新手不建议**——一个 `origin` 最不容易搞错。
+
+**跟着文件夹走的原则**（防止推错仓库）：
+
+```bash
+pwd              # ① 先确认自己在哪个目录
+git remote -v    # ② 再确认这个目录指向哪个仓库
+```
+
+**在哪个文件夹里执行 `git` 命令，就操作哪个仓库**。
+你的 `API_Gen`、`deepseek-harness` 各管各的，互不影响。
+
+---
+
 ## 9. 这个项目的铁律
 
 ### 9.1 绝不提交
@@ -512,7 +581,8 @@ git status --short
 | `Permission denied (publickey)` | SSH 公钥没贴对 | 重走 1.5 |
 | `Host key verification failed` | known_hosts 有问题 | `ssh-keygen -R github.com` 后重连 |
 | `remote: Repository not found` | 地址错 / 没权限 | `git remote -v` 检查 |
-| `failed to push some refs` / `Updates were rejected` | 远程有你本地没有的提交 | `git pull --rebase` 再 push |
+| `error: src refspec main does not match any` | **本地分支名和你推的名字不一样**（本地叫 `master`，你推 `main`） | `git branch -M main` 再推；或直接 `git push -u origin master` |
+| `failed to push some refs` / `Updates were rejected` | 远程有你本地没有的提交（比如建仓库时勾了 README/LICENSE） | 见第 12 节"坑 4"：`git pull origin main --allow-unrelated-histories --no-edit` 再推 |
 | `error: Your local changes would be overwritten` | 有未提交改动 | 先 commit 或 `git stash` |
 | 中文文件名显示 `\346\226\207` | 没设 quotepath | 3.2 节 |
 | 每次提交都显示"全部文件被改" | 换行符问题 | 3.2 节 |
@@ -523,7 +593,221 @@ git status --short
 
 ---
 
-## 11. 一页速查
+## 11. 实战踩坑记录（真实遇到的 5 个问题）
+
+> 这一节是**你第一次推到 GitHub 时实际踩到的坑**。每个都给"现象 → 原因 → 解决"。
+> 比抽象的命令讲解有用得多 —— 因为下次你（或同事）会再遇到。
+
+### 坑 1：`git add` 时刷屏 `LF will be replaced by CRLF`
+
+**现象**：
+```
+warning: in the working copy of 'coverage_report.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/07_CAN仿真测试实战.md', LF will be replaced by CRLF ...
+（刷了几十行）
+```
+
+**这是什么**：**正常提示，不是错误**。
+
+- 你配了 `core.autocrlf true`（Windows 标准配置）
+- 含义：提交时 CRLF → LF（统一存进仓库），检出时 LF → CRLF（适配 Windows）
+- 你的文件当前是 LF，git 提醒"下次检出时会转成 CRLF"
+
+**怎么处理**：**什么都不用做**。
+
+| 会不会 | 答案 |
+|---|---|
+| 影响 `git add` 成功？ | ❌ 不会（你实际成功暂存了 121 个文件） |
+| 影响提交内容？ | ❌ 不会（仓库里存的是 LF，跨平台一致） |
+| 影响代码运行？ | ❌ 不会（Python 两种换行都认） |
+| 影响什么？ | 只是刷屏，让你以为出错了 |
+
+> 💡 **判断标准**：全是 `warning:` 且没有一行 `error:` / `fatal:` → 可以忽略。
+> 而且**第一次 add 之后基本不再出现**。
+
+**如果实在想消除**（可选）：项目根目录建 `.gitattributes`，内容：
+```
+* text=auto
+```
+
+---
+
+### 坑 2：`git status` 显示 `nothing to commit, working tree clean` —— 是不是没生效？
+
+**现象**：`git add .` + `git commit` 之后，`git status` 显示：
+```
+On branch master
+nothing to commit, working tree clean
+```
+
+**这是什么**：**这是成功的样子**。意思是"工作区里没有任何未提交的改动"——所有文件都存好了。
+
+**验证方法**：
+```bash
+git log --oneline
+```
+能看到提交记录（如 `1657fee feat: ...`）= 确实提交成功了。
+
+**`git status` 的四种输出，一眼看懂**：
+
+| 输出 | 意思 | 要做什么 |
+|---|---|---|
+| `nothing to commit, working tree clean` | **全部已提交，干净** | ✅ 什么都不用做 |
+| `Untracked files:` + 列表 | 有新文件**还没纳入版本管理** | `git add .` |
+| `Changes not staged for commit:` | 文件**改了但没暂存** | `git add .` |
+| `Changes to be committed:` | 已暂存，**等着 commit** | `git commit -m "..."` |
+
+> 💡 新手最常见的误解：以为"没东西可提交"= "出错了"。
+> **实际相反** —— 这是最理想的状态。
+
+---
+
+### 坑 3：`error: src refspec main does not match any`
+
+**现象**：
+```bash
+$ git push -u origin main
+error: src refspec main does not match any
+error: failed to push some refs to 'github.com:lxzks/robot_framework_project.git'
+```
+
+**原因**：**你本地分支叫 `master`，但你推的是 `main`**。
+本地没有 `main` 这个分支 → git 找不到 → 报 "refspec 不匹配"。
+
+**怎么确认**：
+```bash
+git branch
+```
+如果你看到 `* master`（没有 main），就是这个原因。
+
+**解决（二选一）**：
+
+```bash
+# 方案 A（推荐）：把本地分支改名为 main，再推
+git branch -M main
+git push -u origin main
+
+# 方案 B：直接推 master（分支名会保持 master）
+git push -u origin master
+```
+
+> 💡 **为什么推荐 A**：GitHub 现在默认用 `main`，统一了以后不容易乱。
+> `git branch -M` 只是**改名**，代码和提交都不动。
+
+---
+
+### 坑 4：远程仓库已经有内容，push 被拒绝
+
+**现象**：
+```bash
+$ git push -u origin main
+! [rejected]        main -> main (fetch first)
+error: failed to push some refs
+hint: Updates were rejected because the remote contains work that you do not have locally.
+```
+
+**原因**：**建 GitHub 仓库时勾选了 README / .gitignore / LICENSE**，
+GitHub 自动生成了一个 `Initial commit`。你本地也有一套历史 → **两边历史无关，不能直接推**。
+
+**先看远程到底有什么**（这一步很重要，避免误删东西）：
+```bash
+git fetch origin main
+git ls-tree -r --name-only origin/main      # 远程有哪些文件
+git log origin/main --oneline -1            # 远程的提交是什么
+```
+
+**你遇到的情况**：远程只有 1 个 `LICENSE` 文件 → **合并进来就行，不用强制覆盖**：
+
+```bash
+git pull origin main --allow-unrelated-histories --no-edit
+git push -u origin main
+```
+
+| 参数 | 作用 |
+|---|---|
+| `--allow-unrelated-histories` | 允许合并"无关的两段历史"（必须加，否则报 `refusing to merge unrelated histories`） |
+| `--no-edit` | 用默认的合并信息，**不打开编辑器**（不加的话可能卡在 vim 里退不出来） |
+
+**另一种做法（强制覆盖）**：
+```bash
+git push -u origin main --force
+```
+- 会**丢掉远程的 Initial commit**（你那个 LICENSE）
+- ⚠️ **以后别随便用 `--force`**：多人协作时会冲掉别人的提交
+
+**根本预防**：**本地已有代码时，建 GitHub 仓库三个勾选框全部不勾**。
+（README / .gitignore / LICENSE 都别勾，你本地已经有了）
+
+---
+
+### 坑 5：第一次的 commit 信息写成了 `new commit`
+
+**现象**：`git log --oneline` 显示：
+```
+1657fee new commit
+```
+
+**问题**：这条信息**什么也没说明白**。面试官点开你的仓库，看到 commit 历史是
+`new commit`、`update`、`修改一下` 这种，会觉得不专业。
+
+**现在还要不要改？**
+
+| 情况 | 建议 |
+|---|---|
+| **还没 push** | `git commit --amend -m "新的信息"` 改（安全） |
+| **已经 push 了** | **不建议改** —— 要 `git push --force`，风险大于收益 |
+
+> 💡 你现在的状态是"已经 push 了"，所以**别折腾**，记住教训就够。
+
+**从现在开始，用这个格式**：
+
+```
+类型: 一句话摘要（50 字内）
+
+（空一行）
+为什么改 / 怎么改的
+```
+
+**类型前缀**（业界通用）：
+
+| 前缀 | 什么时候用 |
+|---|---|
+| `feat:` | 新增功能 |
+| `fix:` | 修 bug |
+| `docs:` | 只改文档 |
+| `test:` | 只改测试 |
+| `refactor:` | 重构（不改功能） |
+| `chore:` | 杂项（改配置、.gitignore 等） |
+
+**好例子 vs 坏例子**：
+
+```
+❌ new commit            ❌ update            ❌ 修改
+
+✅ docs: 补充 git 实战踩坑记录
+✅ fix: 修复清除 DTC 后数量不归零的竞态
+   根因：故障条件持续存在时 ECU 会重新记录 DTC
+   修法：清除前用 85 02 暂停 DTC 检测
+```
+
+> 💡 **判断标准**：三个月后你（或同事）看到这条信息，
+> **能不能知道"改了什么、为什么改"**。不能就该重写。
+
+---
+
+### 这 5 个坑的共同规律
+
+| 坑 | 本质 | 一句话记法 |
+|---|---|---|
+| 1 | 换行符配置的正常提示 | `warning` 可以忽略，`error` 才要管 |
+| 2 | 理解 `git status` 的语义 | `clean` 是好事，不是坏事 |
+| 3 | 分支名不一致 | 推之前先 `git branch` 看一眼 |
+| 4 | 两边都有历史 | 建仓库时**三个勾全部不勾** |
+| 5 | 提交信息不专业 | 写"为什么改"，不写"new commit" |
+
+---
+
+## 12. 一页速查
 
 ```bash
 # ===== 一次性配置 =====
