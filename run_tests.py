@@ -15,8 +15,8 @@ android_gui），需要知道"用哪个 Python 解释器"。硬编码路径在 C
     1. 用**当前解释器**（sys.executable）作为子进程解释器注入 RF 变量 PYTHON
     2. 可选先跑用例生成器（DBC → 边界值/pairwise 用例）
     3. 跑 robot，把 stdout/stderr 透传
-    4. 可选生成测试报告（generate_report.py）、覆盖率（coverage_report.py）
-       与需求追溯矩阵（trace_matrix.py）
+    4. 可选生成测试报告（generate_report.py）、覆盖率 HTML（coverage_report.py
+       --html results/coverage.html）与需求追溯矩阵（trace_matrix.py），并检查三者返回码
 """
 
 from __future__ import annotations
@@ -92,16 +92,30 @@ def main() -> int:
     rc = subprocess.call(cmd, env=env)
 
     # 3. 可选：报告与覆盖率
+    # 注意：三份报告都要检查返回码 —— 以前用 subprocess.call 不看 rc，
+    # 环境缺依赖（如没装 PyYAML）时会"表面成功"，实际少了交付物。
+    report_failed = False
     if args.report:
-        print("\n[run_tests] 生成交付报告 ...")
-        subprocess.call([py, str(ROOT / "generate_report.py")], env=env)
-        print("\n[run_tests] 生成覆盖率报告 ...")
-        subprocess.call([py, str(ROOT / "coverage_report.py")], env=env)
-        print("\n[run_tests] 生成需求追溯矩阵（RTM）...")
-        subprocess.call([py, str(ROOT / "trace_matrix.py")], env=env)
+        results = [
+            ("交付报告（test_summary.html）", [py, str(ROOT / "generate_report.py")]),
+            ("覆盖率报告（coverage.html）", [py, str(ROOT / "coverage_report.py"),
+                                             "--html", str(RESULTS / "coverage.html")]),
+            ("需求追溯矩阵（trace_matrix.html）", [py, str(ROOT / "trace_matrix.py")]),
+        ]
+        for i, (name, cmd) in enumerate(results, 1):
+            print(f"\n[run_tests] [{i}/{len(results)}] 生成{name} ...")
+            report_rc = subprocess.call(cmd, env=env)
+            if report_rc != 0:
+                report_failed = True
+                print(f"[run_tests] !! {name} 生成失败（退出码 {report_rc}）"
+                      f"—— results/ 里的产物可能缺失，请看上方报错")
+        if report_failed:
+            print("\n[run_tests] !! 有报告生成失败（见上），本次不完整；"
+                  "常见原因：依赖没装（pip install -r requirements.txt）")
 
     print(f"\n[run_tests] robot 退出码: {rc}")
-    return rc
+    # 报告失败也要让最终退出码非 0，避免"跑成功但产物没出来"被忽略
+    return rc if rc != 0 else (1 if report_failed else 0)
 
 
 if __name__ == "__main__":

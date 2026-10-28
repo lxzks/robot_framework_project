@@ -11,7 +11,7 @@ test_spec_check.py — 测试规范一致性校验
 三类检查：
     ① 规范里的需求 ID 是否都存在（含 related_requirements）
     ② 规范引用的自动化用例是否真的存在（文件 + 用例名）
-    ③ 反向检查：规范里的需求是否都有自动化覆盖（提示未自动化项）
+    ③ 汇总本规范关联的需求清单（反向的"需求未覆盖"检查由 trace_matrix.py 负责）
 
 用法：
     python test_spec_check.py
@@ -24,6 +24,16 @@ import argparse
 import re
 import sys
 from pathlib import Path
+
+
+def _force_utf8_stdio() -> None:
+    """Windows 下 stdout 被重定向时默认 GBK，打印 ✓/✅ 会 UnicodeEncodeError。"""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
+
+_force_utf8_stdio()
 
 ROOT = Path(__file__).parent
 DEFAULT_SPEC = ROOT / "deliverables" / "test_spec_ic_alarm.yaml"

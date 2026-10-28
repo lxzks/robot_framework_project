@@ -111,7 +111,7 @@ python -m robot --outputdir results test_car.robot
 | 你要等什么 | 物理上要多久 | 超时定多少 | 为什么 |
 |---|---|---|---|
 | 车速从 0 到 60 | 60 ÷ 8 ≈ **7.5 秒** | **20 秒** | 7.5 秒 + 启动开销 + 余量 |
-| 水温从 90 到 120 | 一阶惯性，约 **15 秒** | **25 秒** | 15 秒 + 2 个诊断周期确认 + 余量 |
+| 水温从 90 到 120 | 一阶惯性（τ=4s），约 **8 秒** | **25 秒** | 8 秒 + 2 个诊断周期确认 + 余量 |
 | 故障确认（要 2 个诊断周期） | 2 × 0.5 = 1 秒 | 一般 5 秒起 | 留足 |
 
 > 🎯 **判断标准**：你的超时应该是"**正常情况下的 2~3 倍**"。
@@ -126,9 +126,14 @@ python -m robot --outputdir results test_car.robot
 
 这个练习专门练"等待"，做完你对"轮询"就有肌肉记忆了。
 
+**验证你自己的练习**（把 exercise.robot 跑出 PASS 才算过）：
+
 ```bash
-python training/check_all.py     # 做完验证
+python -m robot --outputdir results/training training/L2_wait_and_assert/exercise.robot
 ```
+
+> ⚠️ `python training/check_all.py` 只验证 6 个**参考答案**、用于环境自检，
+> 不判你的练习——你的答案以 exercise.robot 的输出为准。
 
 ---
 

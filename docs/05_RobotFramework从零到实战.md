@@ -2,7 +2,7 @@
 
 > Robot Framework（RF）是**关键字驱动**的通用测试框架。Python 生态、ATDD（验收测试驱动开发）友好、报告开箱即用——这些让它成为测试开发面试的高频加分项。
 >
-> 本章目标：零基础到能独立读写本项目的 7 个测试套件，并理解"为什么这样组织"。
+> 本章目标：零基础到能独立读写本项目的 **6 个主测试套件**（01~06）+ 1 个**自动生成套件**（`tests/robot/generated/generated_signals.robot`，由 `generate_testcases.py` 从 DBC 生成，勿手改），并理解"为什么这样组织"。
 
 ---
 
@@ -232,7 +232,7 @@ class VehicleBusLibrary:
 | 机制 | 说明 |
 |---|---|
 | 类名 `XxxLibrary` | RF 约定后缀，引用时可写全路径或短名 |
-| `ROBOT_LIBRARY_SCOPE` | `GLOBAL`（全程一个实例）/ `SUITE`（每套件一个）/ `TEST`（每用例一个）。**有状态的库（持有总线连接）必须 SUITE/TEST**——否则套件 teardown 关了总线，下个套件复用已关闭的实例直接报错（本项目踩过） |
+| `ROBOT_LIBRARY_SCOPE` | `GLOBAL`（全程一个实例）/ `SUITE`（每套件一个）/ `TEST`（每用例一个）。**持有总线连接、必须在 teardown 释放的库用 SUITE**（本项目 VehicleBus/Diagnostic）；**只读状态文件、无连接的库用 GLOBAL 更省开销**（本项目 Dashboard/Adb）。关键不是选哪个，而是 start/stop 必须成对，且不能让下一个套件复用已关闭的资源（本项目踩过） |
 | `@keyword("名字")` | 显式命名；不写则方法名 `send_can_frame` 自动变成 `Send Can Frame` |
 | 参数默认值 | RF 调用时可不传 |
 | 返回值 | 直接 return，RF 用 `${var}=    Keyword` 接收 |
@@ -280,7 +280,7 @@ tests/robot/01_can_signals.robot      ← 套件 = 一个测试领域
     │  Suite Setup: Start Vehicle Environment speed=60
     │      └─ Process 库启动 ecu_sim + dashboard（子进程）
     │      └─ Wait Until ECU Should Respond（就绪检查）
-    │  Test Cases × 7                  ← 用例 = 一个验证点
+    │  Test Cases × 8                  ← 用例 = 一个验证点
     │  Suite Teardown: Stop Vehicle Environment
     │      └─ Terminate Process + Wait For Process（防残留）
     └─ libraries/                      ← 4 个自定义库 = 4 类系统能力
@@ -308,14 +308,12 @@ tests/robot/01_can_signals.robot      ← 套件 = 一个测试领域
 
 ---
 
-**下一章：[06 · 环境搭建与项目结构](06_环境搭建与项目结构.md)**
-
 ### 📋 自查要点（答完再对，别提前看）
 
 | # | 自查要点 |
 |---|---|
 | 1 | RF 的核心差异是**关键字驱动 + 表格语法**（用例读起来像自然语言，非技术人员也能评审）；pytest 是**代码驱动**。System Validation 岗偏好前者，因为**测试规范要交给客户/主管评审**，可读性就是价值 |
-| 2 | `ROBOT_LIBRARY_SCOPE` 三值：**TEST**（每个用例重建）/ **SUITE**（每个套件重建）/ **GLOBAL**（全程一个）。持有总线连接的库必须用 **GLOBAL 或 SUITE** —— 否则每个用例都重连总线，慢且可能端口冲突（本项目用 SUITE） |
+| 2 | `ROBOT_LIBRARY_SCOPE` 三值：**TEST**（每个用例重建）/ **SUITE**（每个套件重建）/ **GLOBAL**（全程一个）。持总线连接、要在套件 teardown 释放的库用 **SUITE**（VehicleBus/Diagnostic）；只读状态文件的库用 **GLOBAL**（Dashboard/Adb）——重点是 start/stop 成对、别让下一套件复用已关闭资源（本项目两种都用） |
 | 3 | 正确用法：被等待的关键字**自己会断言**（如 `DTC List Should Contain`）；经典误用：包 `Read Signal From Bus`（它读到什么值都算成功 → 等待立即结束）—— 详见 15 章模式 2 |
 | 4 | **资源文件里的相对路径基于该资源文件所在目录**（`${CURDIR}`）；**用例文件里的相对路径基于用例文件所在目录** —— 这是最容易搞混的一点 |
 | 5 | 三步走：`Enter Extended Session` → `Security Unlock` → `Write DID`（正响应）；负向版：只进会话不解锁 → 发 `2E ...` → `Response Should Be Negative With NRC    0x33` |

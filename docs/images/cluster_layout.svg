@@ -12,17 +12,17 @@
 <circle cx="205" cy="184" r="58" fill="#E6F1FB" stroke="#185FA5" stroke-width="1"/>
 <line x1="205" y1="184" x2="240" y2="150" stroke="#185FA5" stroke-width="2.5" stroke-linecap="round"/>
 <circle cx="205" cy="184" r="4" fill="#185FA5"/>
-<text x="205" y="220" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#185FA5">0 - 240</text>
+<text x="205" y="220" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#185FA5">0 - 240</text>
 <circle cx="475" cy="184" r="58" fill="#E6F1FB" stroke="#185FA5" stroke-width="1"/>
 <line x1="475" y1="184" x2="506" y2="154" stroke="#185FA5" stroke-width="2.5" stroke-linecap="round"/>
 <circle cx="475" cy="184" r="4" fill="#185FA5"/>
-<text x="475" y="220" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#185FA5">0 - 8</text>
+<text x="475" y="220" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#185FA5">0 - 8</text>
 <text x="340" y="132" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="30" font-weight="500" fill="#185FA5">D</text>
 <rect x="300" y="172" width="80" height="11" rx="3" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
 <rect x="300" y="192" width="80" height="11" rx="3" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
 <rect x="300" y="212" width="52" height="11" rx="3" fill="#85B7EB" stroke="#185FA5" stroke-width="0.5"/>
-<text x="340" y="244" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#185FA5">12345</text>
-<text x="100" y="298" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a">1  警告灯区（12 个灯，异常才亮）</text>
+<text x="340" y="244" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#185FA5">12345</text>
+<text x="100" y="298" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a">1  警告灯区（实际 12 个灯，异常才亮；示意图只画 6 个）</text>
 <text x="100" y="322" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a">2  车速表（km/h，指针指向当前车速）</text>
 <text x="100" y="346" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a">3  转速表（千转/分，指针指向发动机转速）</text>
 <text x="390" y="298" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a">4  档位显示（这里挂 D 挡）</text>

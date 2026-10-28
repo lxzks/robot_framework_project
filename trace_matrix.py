@@ -39,6 +39,16 @@ import re
 import sys
 from pathlib import Path
 
+
+def _force_utf8_stdio() -> None:
+    """Windows 下 stdout 被重定向时默认 GBK，打印 ✓/✅ 会 UnicodeEncodeError。"""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
+
+_force_utf8_stdio()
+
 ROOT = Path(__file__).parent
 REQ_FILE = ROOT / "requirements" / "requirements.yaml"
 DEFAULT_XML = ROOT / "results" / "output.xml"
@@ -73,15 +83,24 @@ def load_requirements(path: Path) -> list[dict]:
 # 2. 读取执行结果里的用例与标签
 # ===========================================================================
 def iter_tests(suite):
-    """递归取所有用例（注意 RF 结果树是懒加载的，必须显式访问 tests）"""
+    """递归取所有用例，返回 (用例所在的直接套件, 用例)。
+
+    注意 RF 结果树是懒加载的，必须显式访问 tests。
+    """
     for test in suite.tests:
-        yield test
+        yield suite, test
     for sub in suite.suites:
         yield from iter_tests(sub)
 
 
 def collect_tests(xml_path: Path) -> list[dict]:
-    """从 RF 结果里提取每个用例的名字/套件/标签/状态"""
+    """从 RF 结果里提取每个用例的名字/套件/标签/状态。
+
+    必须遍历**根套件本身**：单套件运行（如 `robot tests/robot/01_can_signals.robot`）
+    时用例直接挂在根套件上，只遍历 `result.suite.suites` 会得到 0 用例、
+    需求覆盖率误报 0%。套件名取用例所在的**直接**父套件（01 Can Signals 等），
+    这样 RTM 里仍能按文件区分用例来源。
+    """
     from robot.api import ExecutionResult
     if not xml_path.exists():
         print(f"找不到执行结果: {xml_path} —— 先跑一遍测试")
@@ -89,15 +108,14 @@ def collect_tests(xml_path: Path) -> list[dict]:
 
     result = ExecutionResult(str(xml_path))
     out = []
-    for suite in result.suite.suites:
-        for test in iter_tests(suite):
-            out.append({
-                "name": test.name,
-                "suite": suite.name,
-                "tags": set(test.tags or []),
-                "status": test.status,          # PASS / FAIL / SKIP
-                "elapsed_ms": test.elapsedtime,
-            })
+    for parent, test in iter_tests(result.suite):
+        out.append({
+            "name": test.name,
+            "suite": parent.name,
+            "tags": set(test.tags or []),
+            "status": test.status,          # PASS / FAIL / SKIP
+            "elapsed_ms": test.elapsedtime,
+        })
     return out
 
 

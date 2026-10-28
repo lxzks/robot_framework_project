@@ -49,17 +49,18 @@ import random
 import sys
 import threading
 import time
+import zlib
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).parent))
 from bus import VirtualCanBus                                    # noqa: E402
 from dtc_manager import (                                        # noqa: E402
-    DtcManager, FAULT_CATALOG, status_to_names,
+    BIT_CONFIRMED, DtcManager, FAULT_CATALOG, status_to_names,
 )
 from uds_lib import (                                            # noqa: E402
     SID_CLEAR_DTC, SID_COMMUNICATION_CONTROL, SID_CONTROL_DTC_SETTING,
-    SID_DIAGNOSTIC_SESSION_CONTROL, SID_ECU_RESET,
+    SID_DIAGNOSTIC_SESSION_CONTROL, SID_ECU_RESET, SID_IO_CONTROL,
     SID_READ_DID, SID_READ_DTC, SID_REQUEST_DOWNLOAD,
     SID_ROUTINE_CONTROL, SID_SECURITY_ACCESS, SID_TESTER_PRESENT,
     SID_TRANSFER_DATA, SID_TRANSFER_EXIT, SID_WRITE_DID,
@@ -77,10 +78,32 @@ log = logging.getLogger("ecu_sim")
 ID_ENGINE_DATA = 0x100
 ID_CLUSTER_DATA = 0x200
 ID_TELLTALE = 0x300
-ID_UDS_REQUEST = 0x7E0     # Tester → ECU
-ID_UDS_RESPONSE = 0x7E8    # ECU → Tester
+ID_UDS_REQUEST = 0x7E0     # Tester → ECU（物理寻址）
+ID_UDS_FUNCTIONAL_REQUEST = 0x7DF   # Tester → 所有 ECU（功能寻址，OBD-II 也走这里）
+ID_UDS_RESPONSE = 0x7E8    # ECU → Tester（无论物理/功能寻址，响应都发物理响应 ID）
 ID_NM = 0x510              # 网络管理报文（NM PDU，不走 DBC，同真实项目）
 ID_POWER_MODE = 0x600      # 电源模式广播（真实由 BCM 发，本仿真由测试/BCM 扮演）
+
+# ---------------------------------------------------------------------------
+# 诊断进阶服务（本文件按 UDS 服务号实现，不放进 uds_lib 常量表，避免动公共库）
+# ---------------------------------------------------------------------------
+SID_READ_MEMORY_BY_ADDRESS = 0x23    # ReadMemoryByAddress
+SID_WRITE_MEMORY_BY_ADDRESS = 0x3D   # WriteMemoryByAddress
+OBD_SIDS = {0x01, 0x03, 0x04, 0x09}  # ISO 15031 常用 mode（仅功能寻址 0x7DF 生效）
+
+# 0x2F 执行器控制：DID 0x3001 = 仪表警告灯模块（12 个灯，2 字节掩码）
+IO_CONTROL_DID = 0x3001
+# 灯名 → TelltaleStatus(DBC) 里的信号位序。三处清单（ECU/DBC/仪表）必须一致。
+TELLTALE_BIT_LAYOUT = [
+    ("MilWarning", 0), ("OilPressureLow", 1), ("CoolantTempHigh", 2),
+    ("BatteryLow", 3), ("AbsFault", 4), ("AirbagFault", 5),
+    ("SeatbeltWarning", 6), ("TurnLeft", 8), ("TurnRight", 9),
+    ("HighBeam", 10), ("LowBeam", 11), ("ParkBrake", 12),
+]
+
+# 0x23/0x3D 内存映射教学区：0x08000000 起 1KB（工程/产线读写内存的教学替身）
+MEMORY_AREA_BASE = 0x08000000
+MEMORY_AREA_SIZE = 0x400
 
 # 本 ECU 自己发送的报文 ID 集合。为什么要这个：UDP 组播环境下
 # python-can 的 receive_own_messages 过滤不生效（该接口不支持），
@@ -99,16 +122,30 @@ DID_DATABASE = {
     0xF18A: b"VISTEON",                        # 供应商
     0xF190: b"LSVAM4180NC000001",              # VIN 码 17 字节（演示多帧响应）
     0xF1A0: b"V1.0.0",                         # 应用版本（可写）
+    # ---- OTA / Bootloader 版本管理（Wave3 新增）----
+    0xF195: b"v1.0.0",                 # 应用软件版本号（刷写成功 + 复位后更新为包版本）
+    0xF1A3: b"BL-1.0.0",               # Bootloader 版本
+    0xF186: b"HW-VISTEON-P7",          # 硬件版本
+    # OTA 刷写暂存（0x2E 可写，仅刷写流程内部使用）：
+    0xF1A1: b"v1.0.0",                 # 目标版本暂存：31 01 FF00 成功后由 0x11 复位激活
+    0xF1A2: bytes(4),                  # 期望 CRC32（31 01 FF00 完整性校验用，0=不校验）
     # 测试激励控制（工程模式 DID，台架/产线用）：4 字节
     #   byte0 = 供电电压(V)  byte1 = 丢帧率(%)
-    #   byte2 = 报文停发位图(bit0=0x100 bit1=0x200 bit2=0x300)  byte3 = 保留
+    #   byte2 = 报文停发位图(bit0=0x100 bit1=0x200 bit2=0x300)
+    #   byte3 = 预编程检查用"模拟车速"(km/h, 0=用真实车速；自动化测试用它验证
+    #           "车速非 0 拒绝刷写"分支，台架无法真的让车跑起来)
     0xF1B0: bytes([14, 0, 0, 0]),
 }
-WRITABLE_DIDS = {0xF188, 0xF1A0, 0xF1B0}       # 允许 0x2E 写的 DID
+WRITABLE_DIDS = {0xF188, 0xF1A0, 0xF1B0, 0xF1A1, 0xF1A2}  # 允许 0x2E 写的 DID
 
 # 安全访问算法（教学简化版）：key = seed XOR 0x5A5A5A5A
 # 真实 OEM 算法复杂得多（CRC/查表/时间窗），但流程完全一样
 SECURITY_XOR_KEY = 0x5A5A5A5A
+
+# 安全访问防爆破参数：连续 3 次错误密钥 → 锁定 5 秒
+# （真实 ECU 通常还有指数退避/永久锁定+售后解锁流程，教学版取最小闭环）
+SECURITY_MAX_ATTEMPTS = 3
+SECURITY_LOCKOUT_SECONDS = 5.0
 
 
 def compute_key(seed: bytes) -> bytes:
@@ -142,6 +179,13 @@ class PowertrainEcu:
         # ---- 诊断状态 ----
         self.session = SESSION_DEFAULT
         self.security_unlocked = False
+        # ---- 安全访问（0x27）状态机：防绕过 / 防重放 / 防爆破 ----
+        #   _seed: 当前挑战种子；None 表示"尚未请求种子"（此时 27 02 必须拒绝）
+        #   _failed_key_attempts: 连续错误密钥次数（成功或锁定到期后清零）
+        #   _security_lock_until: 锁定截止时刻（time.monotonic），0 表示未锁定
+        self._seed: bytes | None = None
+        self._failed_key_attempts = 0
+        self._security_lock_until = 0.0
         self.last_tester_request_time = time.monotonic()  # S3 定时器
         self.dtc_detection_enabled = True
         self.routines: dict[int, dict] = {}   # 例程状态
@@ -164,8 +208,33 @@ class PowertrainEcu:
         self.SLEEP_DELAY_SECONDS = 2.0
         self.telltale_override: dict[str, int] = {}  # 灯光测试例程用
 
-        # ---- 多帧接收状态（0x7E0 上收到 TP 分片时暂存）----
+        # ---- 0x2F InputOutputControlByIdentifier：警告灯执行器状态 ----
+        #   _io_control_state: 最近一次 shortTerm/longTerm 控制的 12 位灯掩码
+        #   _io_control_mode:  最近一次控制子功能（00/01/02/03），便于调试
+        self._io_control_state = 0
+        self._io_control_mode: int | None = None
+        # ---- 0x23/0x3D 内存映射教学区：0x08000000 起 1KB ----
+        # 前 17 字节映射 VIN（与 DID 0xF190 一致），其余为可读写 RAM。
+        # 真实 ECU 这里是 Flash/EEPROM 驱动；教学版用 bytearray 替代。
+        self._memory_area = bytearray(MEMORY_AREA_SIZE)
+        _vin = DID_DATABASE[0xF190]
+        self._memory_area[:len(_vin)] = _vin
+
+        # ---- OTA / Bootloader 状态机（Wave3 新增）----
+        #   _app_version:     当前运行的 APP 版本（成功刷写 + 0x11 复位后才更新）
+        #   _active_slot:     A/B 分区当前激活槽（A=旧镜像，B=新镜像）
+        #   _pending_activation: 31 01 FF00 通过后登记的"待激活"版本（复位生效）
+        #   _expected_crc:    本轮下载期望 CRC32（由 0x2E 写 F1A2 预置；None=只校验长度）
+        #   _precheck_speed:  预编程条件检查用的模拟车速（0=用真实车速）
+        self._app_version: bytes = bytes(DID_DATABASE[0xF195])
+        self._active_slot = "A"
+        self._pending_activation: dict | None = None
+        self._expected_crc: int | None = None
+        self._precheck_speed = 0
+
+        # ---- 多帧接收状态（0x7E0/0x7DF 上收到 TP 分片时暂存）----
         self._tp_rx = IsoTpReceiver()
+        self._tp_functional = False   # 当前正在重组的请求是否来自功能寻址 0x7DF
         self._awaiting_fc = False    # 是否在等测试仪的流控帧
         self._pending_frames: list[bytes] = []
 
@@ -175,7 +244,10 @@ class PowertrainEcu:
     # 一、正常通信：周期报文
     # ==================================================================
     def _send_engine_data(self) -> None:
-        rpm = max(800, self.speed_actual * 80)     # 怠速 800，每 km/h 约 80 rpm
+        # 钳位到 DBC 声明范围：EngineSpeed [0|16000]，即车速上限 200 km/h。
+        # 否则 `speed 250` 这类输入会让 cantools 抛 EncodeError，直接打死
+        # 主循环（run() 里已兜底，但这里先保证发得出合法帧）。
+        rpm = min(16000.0, max(800.0, self.speed_actual * 80))  # 怠速 800，约 80rpm/(km/h)
         data = self.db.encode_message("EngineData", {
             "VehicleSpeed": self.speed_actual,
             "EngineSpeed": rpm,
@@ -248,7 +320,8 @@ class PowertrainEcu:
     def _check_session_for_service(self, sid: int) -> int | None:
         """返回 None=允许，否则返回 NRC。教学版权限模型：
         默认会话：只读类服务（0x10/0x3E/0x11/0x19/0x22/0x14）
-        扩展会话：+ 0x2E 写（还需安全解锁）/ 0x31 例程 / 0x28 / 0x85
+        扩展会话：+ 0x2E 写（还需安全解锁）/ 0x2F 执行器控制 / 0x23 读内存
+                  / 0x3D 写内存（后三者同样需安全解锁）/ 0x31 例程 / 0x28 / 0x85
         编程会话：+ 刷写三件套 0x34/0x36/0x37（还需安全解锁）
         """
         if sid in (SID_DIAGNOSTIC_SESSION_CONTROL, SID_TESTER_PRESENT, SID_ECU_RESET):
@@ -266,17 +339,31 @@ class PowertrainEcu:
 
         if self.session == SESSION_DEFAULT:
             return 0x7F  # serviceNotSupportedInActiveSession
-        if sid == SID_WRITE_DID and not self.security_unlocked:
+        # 写 DID / 执行器控制 / 内存读写：扩展会话之上还必须有安全解锁
+        if sid in (SID_WRITE_DID, SID_IO_CONTROL,
+                   SID_READ_MEMORY_BY_ADDRESS,
+                   SID_WRITE_MEMORY_BY_ADDRESS) and not self.security_unlocked:
             return 0x33  # securityAccessDenied
         return None
 
-    def handle_uds_request(self, data: bytes) -> None:
-        """处理一条完整 UDS 请求（已重组为单块数据），回复 0x7E8。"""
+    def handle_uds_request(self, data: bytes, functional: bool = False) -> None:
+        """处理一条完整 UDS 请求（已重组为单块数据），回复 0x7E8。
+
+        functional=True 表示请求来自**功能寻址 0x7DF**：
+          - OBD-II 服务（0x01/0x03/0x04/0x09）走 ISO 15031 分支；
+          - 其它请求仍按普通 UDS 处理（真实 ECU 也允许 0x3E/0x22 等功能寻址）。
+        响应一律发 0x7E8（物理响应 ID）—— 真实 ECU 同样如此：
+        功能寻址只有"请求"是广播的，"响应"必须带发送方身份（物理 ID）。
+        """
         if len(data) < 1:
             return
         sid = data[0]
         params = data[1:]
-        log.info("UDS 请求: SID=%#04x params=%s", sid, params.hex())
+        log.info("UDS 请求(%s): SID=%#04x params=%s",
+                 "功能寻址" if functional else "物理寻址", sid, params.hex())
+        if functional and sid in OBD_SIDS:
+            self._svc_obd(sid, params)
+            return
 
         nrc = self._check_session_for_service(sid)
         if nrc is not None:
@@ -291,6 +378,9 @@ class PowertrainEcu:
             SID_READ_DID: self._svc_read_did,
             SID_SECURITY_ACCESS: self._svc_security_access,
             SID_WRITE_DID: self._svc_write_did,
+            SID_IO_CONTROL: self._svc_io_control,
+            SID_READ_MEMORY_BY_ADDRESS: self._svc_read_memory,
+            SID_WRITE_MEMORY_BY_ADDRESS: self._svc_write_memory,
             SID_ROUTINE_CONTROL: self._svc_routine_control,
             SID_TESTER_PRESENT: self._svc_tester_present,
             SID_CONTROL_DTC_SETTING: self._svc_control_dtc_setting,
@@ -316,6 +406,7 @@ class PowertrainEcu:
             return
         self.session = sub
         self.security_unlocked = False   # 切会话必须重新解锁（安全设计常识）
+        self._seed = None                # 会话切换后旧种子作废（防跨会话重放）
         # P2 = 50ms(0x0032), P2* = 5000ms(0x01F4)：诊断仪等待响应的超时参数
         self._send_response(positive_response(sid, bytes([sub, 0x00, 0x32, 0x01, 0xF4])))
 
@@ -332,6 +423,29 @@ class PowertrainEcu:
         self.session = SESSION_DEFAULT
         self.security_unlocked = False
         self.flash_state = None
+        # ---- OTA/Bootloader：A/B 分区激活 ----
+        # 刷写成功（31 01 FF00 通过）只把新版本登记为"待激活"；
+        # 复位后 Bootloader 才真正切到新槽 → 版本号更新。
+        # 这样"刷写失败/中途断电"天然回滚到旧版本（旧槽从未被破坏）。
+        if self._pending_activation is not None:
+            new_version = self._pending_activation.get("version")
+            if new_version:
+                DID_DATABASE[0xF195] = bytes(new_version)
+                self._app_version = bytes(new_version)
+                self._active_slot = self._pending_activation.get(
+                    "slot", self._active_slot)
+                log.warning("OTA 激活新版本 %s（当前 A/B 槽=%s）",
+                            new_version.decode(errors="replace"),
+                            self._active_slot)
+            self._pending_activation = None
+        # 复位同时清安全访问状态：种子作废、爆破计数/锁定归零
+        # （真实 ECU 复位后安全访问必须从头来）
+        self._seed = None
+        self._failed_key_attempts = 0
+        self._security_lock_until = 0.0
+        # 刷写相关的临时输入也必须清（避免上次 OTA 的激励污染下一次刷写检查）
+        self._expected_crc = None
+        self._precheck_speed = 0
 
     # ---------------------------------------------------------------- 0x14
     def _svc_clear_dtc(self, sid: int, p: bytes) -> None:
@@ -394,25 +508,70 @@ class PowertrainEcu:
 
     # ---------------------------------------------------------------- 0x27
     def _svc_security_access(self, sid: int, p: bytes) -> None:
+        """0x27 SecurityAccess：种子-密钥握手（含防绕过/防重放/防爆破）。
+
+        安全设计要点（真实 ECU 也遵循同样的原则，教学版只简化算法）：
+        - **必须先取种子**：27 02 前没发 27 01 → NRC 0x24 requestSequenceError。
+          （历史漏洞：旧实现用 `getattr(self, "_seed", b"\x00"*4)`，即
+          未请求种子时默认 seed=0x00000000 → 期望密钥恒为 0x5A5A5A5A，
+          攻击者直接发 `27 02 5A5A5A5A` 就能解锁。本测试模块用"漏洞回归"用例锁死它。）
+        - **种子一次性**：校验成功后立即清空 `_seed`，同一 key 不能重放。
+        - **nonce**：每次 27 01 都生成新的随机种子 → 旧密钥在新种子上必然失效。
+        - **防爆破**：连续 3 次错误密钥 → 锁定 5 秒，期间任何安全访问都回
+          NRC 0x36 exceedNumberOfAttempts（锁定到期后计数归零、允许重试）。
+        """
+        now = time.monotonic()
+        if now < self._security_lock_until:
+            # 锁定中：不消耗也不校验，直接拒绝（避免继续爆破）
+            self._send_response(negative_response(sid, 0x36))
+            return
+        if self._security_lock_until and now >= self._security_lock_until:
+            # 锁定到期：计数归零，允许重新尝试
+            log.info("安全访问锁定到期，计数归零")
+            self._security_lock_until = 0.0
+            self._failed_key_attempts = 0
+
         if not p:
             self._send_response(negative_response(sid, 0x13))
             return
-        sub = p[0]
-        if sub == 0x01:  # 请求种子
-            seed = random.randbytes(4)
-            self._seed = seed
-            self._send_response(positive_response(sid, bytes([0x01]) + seed))
-        elif sub == 0x02:  # 发送密钥
-            key = p[1:5]
-            if len(key) != 4:
+        sub = p[0] & 0x7F        # 最高位是 suppressPosRspMsgIndicationBit
+        if sub == 0x01:          # ---- 请求种子 ----
+            if len(p) != 1:      # 27 01 不接受额外参数（超长 → 0x13）
                 self._send_response(negative_response(sid, 0x13))
                 return
-            expected = compute_key(getattr(self, "_seed", b"\x00" * 4))
+            seed = random.randbytes(4)   # nonce：每次都是新随机种子
+            self._seed = seed
+            self._send_response(positive_response(sid, bytes([0x01]) + seed))
+            log.info("安全访问：下发新种子 %s", seed.hex())
+        elif sub == 0x02:        # ---- 发送密钥 ----
+            if len(p) != 5:      # subFunction(1) + key(4)，截断/超长 → 0x13
+                self._send_response(negative_response(sid, 0x13))
+                return
+            if self._seed is None:
+                # 未请求种子就直接发密钥 → 序列错误（修复 27 02 绕过漏洞）
+                log.warning("安全访问：27 02 在未请求种子的情况下到达 → NRC 0x24")
+                self._send_response(negative_response(sid, 0x24))
+                return
+            expected = compute_key(self._seed)
+            key = p[1:5]
             if key == expected:
                 self.security_unlocked = True
+                self._seed = None            # 一次性：成功后立即作废
+                self._failed_key_attempts = 0
                 self._send_response(positive_response(sid, bytes([0x02])))
+                log.info("安全访问：解锁成功")
             else:
-                self._send_response(negative_response(sid, 0x35))  # invalidKey
+                self._failed_key_attempts += 1
+                log.warning("安全访问：密钥错误（连续第 %d 次）",
+                            self._failed_key_attempts)
+                if self._failed_key_attempts >= SECURITY_MAX_ATTEMPTS:
+                    self._security_lock_until = now + SECURITY_LOCKOUT_SECONDS
+                    self._seed = None
+                    log.warning("安全访问：连续失败 %d 次，锁定 %.0fs（NRC 0x36）",
+                                self._failed_key_attempts, SECURITY_LOCKOUT_SECONDS)
+                    self._send_response(negative_response(sid, 0x36))
+                else:
+                    self._send_response(negative_response(sid, 0x35))
         else:
             self._send_response(negative_response(sid, 0x12))
 
@@ -426,9 +585,17 @@ class PowertrainEcu:
         if did not in WRITABLE_DIDS:
             self._send_response(negative_response(sid, 0x31))
             return
+        if did == 0xF1A2 and len(value) != 4:   # 期望 CRC32 必须 4 字节
+            self._send_response(negative_response(sid, 0x13))
+            return
         DID_DATABASE[did] = bytes(value)
         if did == 0xF1B0:
             self._apply_test_stimulus(value)
+        elif did == 0xF1A2:
+            self._expected_crc = int.from_bytes(value, "big")
+            log.info("OTA 期望 CRC32 = %#010x", self._expected_crc)
+        elif did == 0xF1A1:
+            log.info("OTA 目标版本暂存 = %s", value.decode(errors="replace"))
         else:
             log.info("写入 DID %#06x = %s", did, value.decode(errors="replace"))
         self._send_response(positive_response(sid, bytes([p[0], p[1]])))
@@ -447,8 +614,12 @@ class PowertrainEcu:
         self.battery_voltage = float(v[0]) if v[0] else self.battery_voltage
         self.drop_rate = max(0, min(100, v[1]))
         self.suppressed_mask = v[2]
-        log.warning("测试激励已应用: 电压=%.1fV 丢帧率=%d%% 停发位图=%#04x",
-                    self.battery_voltage, self.drop_rate, self.suppressed_mask)
+        # byte3 = 预编程条件检查用的"模拟车速"（0=不模拟，用真实车速）。
+        # 自动化测试没法真让车跑起来，用它验证"车速非 0 → 拒绝刷写"分支。
+        self._precheck_speed = int(v[3])
+        log.warning("测试激励已应用: 电压=%.1fV 丢帧率=%d%% 停发位图=%#04x 模拟车速=%d",
+                    self.battery_voltage, self.drop_rate, self.suppressed_mask,
+                    self._precheck_speed)
 
     def _should_send(self, bit: int) -> bool:
         """按测试激励决定某条周期报文是否发送"""
@@ -459,6 +630,27 @@ class PowertrainEcu:
         return True
 
     # ---------------------------------------------------------------- 0x31
+    def _preprogramming_problems(self) -> list:
+        """预编程条件检查（0x31 01 0203）的判定逻辑，返回"不满足项"清单。
+
+        真实 Bootloader 进入编程前要求：车速为 0、驻车、蓄电池电压正常、
+        无关键故障、无进行中的下载……教学版取两条最容易自动化的：
+          - 车速 = 0（自动化测试可用工程 DID F1B0 byte3 模拟非 0，见
+            `_apply_test_stimulus`；台架无法真的让车跑起来）
+          - 蓄电池电压 10.5~15.5V（可用 F1B0 byte0 注入欠压/过压）
+          - 不能有未完成的下载会话
+        """
+        problems: list = []
+        speed = self._precheck_speed if self._precheck_speed > 0 \
+            else self.speed_actual
+        if abs(speed) > 0.5:
+            problems.append(f"车速非 0（{speed:.1f} km/h）")
+        if not 10.5 <= self.battery_voltage <= 15.5:
+            problems.append(f"电压异常（{self.battery_voltage:.1f}V）")
+        if self.flash_state is not None and not self.flash_state.get("exited"):
+            problems.append("存在未完成的下载会话")
+        return problems
+
     def _svc_routine_control(self, sid: int, p: bytes) -> None:
         if len(p) < 3:
             self._send_response(negative_response(sid, 0x13))
@@ -468,6 +660,27 @@ class PowertrainEcu:
             if rid == 0x0200:     # 自检例程：立即完成
                 self.routines[rid] = {"result": 0x00, "done": True}
                 self._send_response(positive_response(sid, bytes([0x01, 0x02, 0x00, 0x00])))
+            elif rid == 0x0203:   # 预编程条件检查（刷写前：车速=0、电压正常…）
+                problems = self._preprogramming_problems()
+                if problems:
+                    log.warning("预编程条件不满足，拒绝刷写: %s",
+                                "；".join(problems))
+                    # ISO 14229：进入编程会话的前提条件不满足 → 0x22
+                    self._send_response(negative_response(sid, 0x22))
+                    return
+                self.routines[rid] = {"result": 0x00, "done": True}
+                self._send_response(positive_response(
+                    sid, bytes([0x01, 0x02, 0x03, 0x00])))
+                log.info("预编程条件检查通过（车速=0、电压=%.1fV）",
+                         self.battery_voltage)
+            elif rid == 0x0202:   # 编程依赖检查（编程会话内、请求下载前）
+                if self.flash_state is not None and not self.flash_state.get("exited"):
+                    self._send_response(negative_response(sid, 0x24))
+                    return
+                self.routines[rid] = {"result": 0x00, "done": True}
+                self._send_response(positive_response(
+                    sid, bytes([0x01, 0x02, 0x02, 0x00])))
+                log.info("编程依赖检查通过")
             elif rid == 0x0301:   # 灯光测试：点亮所有警告灯
                 # 注意：必须与仪表/DBC 的灯清单**完全一致**（12 个）。
                 # 这里曾漏过 SeatbeltWarning → 灯光自检只亮 11 个灯，
@@ -484,21 +697,37 @@ class PowertrainEcu:
                 # 文件 + 测试读到"的完整窗口，否则用例要靠极限时序才能通过
                 threading.Timer(4.0, self._finish_light_test).start()
                 self._send_response(positive_response(sid, bytes([0x01, 0x03, 0x01])))
-            elif rid == 0xFF00:   # 检查编程完整性（刷写收尾：校验和比对）
+            elif rid == 0xFF00:   # 检查编程完整性（刷写收尾：长度 + CRC32 双重校验）
                 if self.flash_state is None:
                     self._send_response(negative_response(sid, 0x24))  # requestSequenceError
                     return
                 received = self.flash_state["received"]
                 expected = self.flash_state["size"]
+                payload_data = bytes(self.flash_state.get("data", b""))
                 ok = (received == expected)
-                # 真实 ECU 这里会比对 Flash 校验和；教学版比对"收到字节数
-                # 与声明大小是否一致"（长度错 = 完整性失败）
+                detail = f"长度 {received}/{expected}"
+                # 若刷写流程通过 0x2E 写 F1A2 预置了期望 CRC32，则做第二道校验。
+                # 真实 ECU 在这里比对 Flash 校验和；教学版用 zlib.crc32。
+                if ok and self._expected_crc is not None:
+                    crc = zlib.crc32(payload_data) & 0xFFFFFFFF
+                    ok = (crc == self._expected_crc)
+                    detail += f"，CRC32 {crc:#010x}/{self._expected_crc:#010x}"
                 self.flash_state = None      # 校验后清状态
+                self._expected_crc = None    # 期望 CRC 一次性使用
+                if ok:
+                    # 刷写成功：登记"待激活"版本，等 0x11 复位才切 A/B 槽
+                    target = DID_DATABASE.get(0xF1A1, self._app_version)
+                    self._pending_activation = {
+                        "version": bytes(target),
+                        "slot": "B" if self._active_slot == "A" else "A",
+                    }
+                else:
+                    self._pending_activation = None   # 失败：保持旧版本（回滚）
                 result = 0x00 if ok else 0x01
                 self._send_response(positive_response(
                     sid, bytes([0x01, 0xFF, 0x00, result])))
-                log.info("编程完整性校验: 收到 %d 字节 / 声明 %d 字节 → %s",
-                         received, expected, "通过" if ok else "失败")
+                log.info("编程完整性校验: %s → %s", detail,
+                         "通过（复位后激活新版本）" if ok else "失败（保持旧版本）")
             else:
                 self._send_response(negative_response(sid, 0x31))
         elif sub == 0x03:  # 请求例程结果
@@ -522,8 +751,11 @@ class PowertrainEcu:
             memorySize(M)                        要写入的字节数（大端）
         正响应：74 + lengthFormatIdentifier(0x20) + maxBlockLength(2B)（大端）
         """
-        if self.flash_state is not None:
-            # 上一次刷写没收尾就又请求下载 → 序列错误
+        if self.flash_state is not None and not self.flash_state.get("exited"):
+            # 上一次刷写还没退出传输就又要下载 → 序列错误。
+            # 注意：0x37 之后 flash_state 仍保留（31 01 FF00 完整性校验还要用
+            # 已收字节数/校验和），但允许新的 0x34 覆盖它 —— 真实 ECU 支持
+            # 分区块连续下载（App → Cal → …），不能因为"上一段已 exit"就拒绝。
             self._send_response(negative_response(sid, 0x24))
             return
         if len(p) < 10:
@@ -544,6 +776,8 @@ class PowertrainEcu:
         self.flash_state = {
             "address": address, "size": size, "received": 0,
             "checksum": 0, "next_block": 1, "exited": False,
+            # 保存已收数据：31 01 FF00 要用它做 CRC32 完整性校验
+            "data": bytearray(),
         }
         max_block = 1024
         self._send_response(positive_response(
@@ -576,6 +810,7 @@ class PowertrainEcu:
             return
         self.flash_state["checksum"] = (
             self.flash_state["checksum"] + sum(payload)) & 0xFFFFFFFF
+        self.flash_state["data"].extend(payload)
         self.flash_state["received"] += len(payload)
         self.flash_state["next_block"] = (block + 1) & 0xFF
         self._send_response(positive_response(sid, bytes([block])))
@@ -653,6 +888,204 @@ class PowertrainEcu:
         log.info("通信控制: sub=%#04x → 周期发送=%s, 接收=%s",
                  sub, self.comm_tx_enabled, self.comm_rx_enabled)
 
+    # ---------------------------------------------------------------- 0x2F
+    def _svc_io_control(self, sid: int, p: bytes) -> None:
+        """0x2F InputOutputControlByIdentifier：控制 ECU 的"虚拟执行器"。
+
+        真实用途（产线/EOL 与台架）：
+          - 不拆件就能验证执行器驱动通路（灯、电机、继电器）
+          - 产线终检"点灯测试"、售后诊断"强制动作"
+          - 台架上绕过传感器直接给定执行器值（如把水温表强制打到 120℃）
+
+        本项目执行器：DID 0x3001 = 仪表警告灯模块（12 个灯）。
+        请求：``2F <DID 2B> <control 1B> <mask 2B>``
+          control：00 returnControlToECU / 01 resetToDefault
+                   02 shortTermAdjustment / 03 longTermAdjustment
+          mask   ：12 个警告灯的位图（位序与 DBC TelltaleStatus 一致）
+        正响应：``6F <DID 2B> <controlState 2B>``（控制后的实际灯掩码）
+
+        权限：扩展/编程会话 + 安全解锁（默认会话回 0x7F、未解锁回 0x33）。
+        """
+        if len(p) < 3:
+            self._send_response(negative_response(sid, 0x13))
+            return
+        did = (p[0] << 8) | p[1]
+        control = p[2]
+        if did != IO_CONTROL_DID:
+            self._send_response(negative_response(sid, 0x31))
+            return
+        if control not in (0x00, 0x01, 0x02, 0x03):
+            self._send_response(negative_response(sid, 0x12))
+            return
+        if control in (0x02, 0x03):      # shortTermAdjustment / longTermAdjustment
+            if len(p) < 5:
+                self._send_response(negative_response(sid, 0x13))
+                return
+            mask = ((p[3] << 8) | p[4]) & 0x1FFF
+            self._io_control_mode = control
+            self._io_control_state = mask
+            self._apply_io_telltale_mask(mask)
+            state = mask
+            log.info("0x2F 执行器控制: DID=%#06x control=%#04x mask=%#06x",
+                     did, control, mask)
+        else:                            # 00 returnControlToECU / 01 resetToDefault
+            self._io_control_mode = control
+            self._io_control_state = 0
+            self.telltale_override = {}   # 交还控制权：0x300 回到 DTC 驱动
+            state = self._current_telltale_mask()
+            log.info("0x2F 交还控制权: DID=%#06x control=%#04x", did, control)
+        # 正响应 6F + DID + controlState（2 字节掩码）
+        self._send_response(positive_response(
+            sid, bytes([p[0], p[1], (state >> 8) & 0xFF, state & 0xFF])))
+
+    def _apply_io_telltale_mask(self, mask: int) -> None:
+        """把 12 位灯掩码映射成 0x300 TelltaleStatus 的信号覆盖字典。
+
+        `_send_telltale` 会用 `signals.update(self.telltale_override)` 覆盖
+        DTC 驱动的灯状态 —— 这就是"执行器强制"的落地点。
+        """
+        self.telltale_override = {
+            name: (mask >> bit) & 1 for name, bit in TELLTALE_BIT_LAYOUT
+        }
+
+    def _current_telltale_mask(self) -> int:
+        """当前由 DTC 请求点亮的灯掩码（0x2F 交还控制权时用于回显）。"""
+        lights = set(self.dtc.telltales_to_light())
+        mask = 0
+        for name, bit in TELLTALE_BIT_LAYOUT:
+            if name in lights:
+                mask |= 1 << bit
+        return mask
+
+    # ---------------------------------------------------------------- 0x23/0x3D
+    def _parse_alfid(self, p: bytes) -> tuple[int, int, int] | None:
+        """解析 ALFID（addressAndLengthFormatIdentifier）。
+
+        编码（与 0x34 一致）：高 4 位 = memorySize 的字节数，低 4 位 = address 的字节数。
+        返回 ``(address, size, data_offset)``；格式非法返回 None。
+        """
+        if len(p) < 2:
+            return None
+        alfi = p[0]
+        addr_len = alfi & 0x0F
+        size_len = (alfi >> 4) & 0x0F
+        if addr_len not in (1, 2, 3, 4) or size_len not in (1, 2, 3, 4):
+            return None
+        if len(p) < 1 + addr_len + size_len:
+            return None
+        address = int.from_bytes(p[1:1 + addr_len], "big")
+        size = int.from_bytes(p[1 + addr_len:1 + addr_len + size_len], "big")
+        return address, size, 1 + addr_len + size_len
+
+    def _memory_range_ok(self, address: int, size: int) -> bool:
+        return (size > 0
+                and MEMORY_AREA_BASE <= address
+                and address + size <= MEMORY_AREA_BASE + MEMORY_AREA_SIZE)
+
+    def _svc_read_memory(self, sid: int, p: bytes) -> None:
+        """0x23 ReadMemoryByAddress：读内存映射教学区。
+
+        请求：``23 <ALFID> <address N> <size M>``；正响应：``63 + 数据``。
+        真实用途：工程模式读标定/变量、产线读序列号；**风险**：可被用来
+        读取内存中的密钥/标定数据，所以真实 ECU 需要安全解锁 + 会话限制。
+        """
+        parsed = self._parse_alfid(p)
+        if parsed is None:
+            self._send_response(negative_response(sid, 0x13))
+            return
+        address, size, _data_off = parsed
+        if not self._memory_range_ok(address, size):
+            self._send_response(negative_response(sid, 0x31))
+            return
+        offset = address - MEMORY_AREA_BASE
+        data = bytes(self._memory_area[offset:offset + size])
+        log.info("0x23 读内存: 地址 %#010x 长度 %d", address, size)
+        self._send_response(positive_response(sid, data))
+
+    def _svc_write_memory(self, sid: int, p: bytes) -> None:
+        """0x3D WriteMemoryByAddress：写内存映射教学区。
+
+        请求：``3D <ALFID> <address N> <size M> <数据 M 字节>``；正响应：``7D``。
+        真实用途：产线写入配置/标定、Bootloader 刷写；**风险极高**
+        （可篡改标定/绕过保护），真实项目通常只在编程会话 + 安全解锁下开放。
+        """
+        parsed = self._parse_alfid(p)
+        if parsed is None:
+            self._send_response(negative_response(sid, 0x13))
+            return
+        address, size, data_off = parsed
+        if len(p) - data_off != size:
+            self._send_response(negative_response(sid, 0x13))
+            return
+        if not self._memory_range_ok(address, size):
+            self._send_response(negative_response(sid, 0x31))
+            return
+        offset = address - MEMORY_AREA_BASE
+        self._memory_area[offset:offset + size] = p[data_off:data_off + size]
+        log.info("0x3D 写内存: 地址 %#010x 长度 %d", address, size)
+        self._send_response(positive_response(sid))
+
+    # ---------------------------------------------------------------- OBD-II
+    def _svc_obd(self, sid: int, p: bytes) -> None:
+        """OBD-II 服务（ISO 15031 / SAE J1979），只处理功能寻址 0x7DF 的请求。
+
+        法规要求（排放相关）OBD 扫描仪不进入厂家诊断会话就能直接读数据，
+        所以 OBD 分支**不做会话/权限检查**（只支持 4 个最常用的 mode）：
+          0x01 当前数据（PID 05 水温 / 0C 转速 / 0D 车速）
+          0x03 读已确认 DTC（43 + 数量 + 2 字节 DTC）
+          0x04 清 DTC（44）
+          0x09 PID 02 读 VIN（49 02 01 + 17 字节）
+        """
+        if sid == 0x01:
+            pid = p[0] if p else None
+            data = self._obd_current_data(pid)
+            if data is None:
+                self._send_response(negative_response(sid, 0x31))
+                return
+            self._send_response(positive_response(sid, bytes([pid]) + data))
+        elif sid == 0x03:
+            confirmed = [rec for rec in self.dtc.list_dtcs()
+                         if rec.status & BIT_CONFIRMED]
+            body = bytearray([len(confirmed) & 0xFF])
+            for rec in confirmed:
+                b1, b2, _b3 = string_to_dtc(rec.dtc)
+                body.extend([b1, b2])
+            log.info("OBD mode03: 已确认 DTC %d 条", len(confirmed))
+            self._send_response(positive_response(sid, bytes(body)))
+        elif sid == 0x04:
+            count = self.dtc.clear_all()
+            log.info("OBD mode04: 清 DTC（%d 条）", count)
+            self._send_response(positive_response(sid))
+        elif sid == 0x09:
+            if not p or p[0] != 0x02:
+                self._send_response(negative_response(sid, 0x12))
+                return
+            vin = DID_DATABASE[0xF190]
+            # 49 02 01 + VIN 17 字节 = 20 字节 → ISO-TP 多帧响应
+            self._send_response(positive_response(sid, bytes([0x02, 0x01]) + vin))
+        else:
+            self._send_response(negative_response(sid, 0x12))
+
+    def _obd_current_data(self, pid: int | None) -> bytes | None:
+        """OBD mode 0x01 当前数据，返回 2 字节数据场（A,B）；未知 PID → None。
+
+        换算公式（SAE J1979）：
+          PID 0x0C 转速：rpm = ((A*256)+B)/4        本项目模型 rpm = speed*80（钳位）
+          PID 0x0D 车速：km/h = A                   本项目直接用 speed_actual
+          PID 0x05 水温：℃ = A - 40                 本项目用 coolant_temp
+        """
+        if pid == 0x0C:
+            rpm = min(16000.0, max(800.0, self.speed_actual * 80))
+            raw = int(round(rpm * 4)) & 0xFFFF
+            return bytes([(raw >> 8) & 0xFF, raw & 0xFF])
+        if pid == 0x0D:
+            speed = max(0, min(255, int(round(self.speed_actual))))
+            return bytes([speed, 0x00])
+        if pid == 0x05:
+            temp = max(0, min(255, int(round(self.coolant_temp)) + 40))
+            return bytes([temp, 0x00])
+        return None
+
     # ==================================================================
     # 四、响应发送（含 ISO-TP 多帧）
     # ==================================================================
@@ -695,7 +1128,7 @@ class PowertrainEcu:
                 time.sleep(st_min)
 
     # ==================================================================
-    # 五、总线监听线程：收 0x7E0 请求，处理 TP 分片
+    # 五、总线监听线程：收 0x7E0（物理）/0x7DF（功能）请求，处理 TP 分片
     # ==================================================================
     def _bus_listener(self) -> None:
         while self._running:
@@ -706,48 +1139,77 @@ class PowertrainEcu:
                 break
             if msg is None:
                 continue
-            # 忽略自己发送帧的回环副本（模拟环境特有，见 SELF_TX_IDS 说明）
-            if msg.arbitration_id in SELF_TX_IDS:
-                continue
-            # ---- 网络管理：任何**其他节点**的总线活动都刷新静默计时 ----
-            self._last_bus_activity = time.monotonic()
-            if self.nm_state == "sleep":
-                self.nm_state = "normal"
-                self.power_mode = 2          # 简化：唤醒即视为恢复上电（真实还需等 IGN）
-                log.warning("检测到 CAN 活动，节点从睡眠唤醒")
-            # ---- 电源模式广播（真实由 BCM 发，本仿真测试脚本可扮演）----
-            if msg.arbitration_id == ID_POWER_MODE and msg.data:
-                mode = msg.data[0]
-                if mode != self.power_mode:
-                    log.warning("电源模式变更: %d → %d", self.power_mode, mode)
-                self.power_mode = mode
-                continue
-            if msg.arbitration_id != ID_UDS_REQUEST or not msg.data:
-                continue
-            pci = msg.data[0]
-            if pci & 0xF0 == 0x00:      # 单帧 SF：整条请求在一帧里
-                length = pci & 0x0F
-                request = bytes(msg.data[1 : 1 + length])
-                self._handle_request_safely(request)
-                self.last_tester_request_time = time.monotonic()
-            elif pci & 0xF0 == 0x10:    # 首帧 FF：立即回流控帧
-                total = ((pci & 0x0F) << 8) | msg.data[1]
+            # 线程级兜底：任何单帧处理异常都只记录并继续，绝不静默退出。
+            # 否则现象是"周期报文还在发、诊断请求石沉大海"，极难排查。
+            try:
+                self._handle_bus_frame(msg)
+            except Exception:  # noqa: BLE001
+                log.exception("总线帧处理异常（监听线程继续运行）")
                 self._tp_rx = IsoTpReceiver()
-                self._tp_rx.feed(bytes(msg.data))
-                # FC 是 ECU→Tester 方向，必须发到响应 ID 0x7E8（不是 0x7E0！）
-                # BS=0（不限量）与接收端实现一致：本 ECU 的 IsoTpReceiver
-                # 一次收完不做分块确认。**声明的流控参数必须与实际实现能力
-                # 一致** —— 若声明 BS=8 却不在收满 8 帧后回新 FC，发送方会
-                # 一直等流控帧直到超时（本项目真实踩过的坑）。
-                self.bus.send_frame(ID_UDS_RESPONSE, build_flow_control(0, 0))
-                log.info("收到多帧请求 FF，总长 %d 字节，已回 FC", total)
-            elif pci & 0xF0 == 0x20:    # 连续帧 CF
-                done, data = self._tp_rx.feed(bytes(msg.data))
-                if done and data:
-                    self._handle_request_safely(data)
-                    self.last_tester_request_time = time.monotonic()
 
-    def _handle_request_safely(self, request: bytes) -> None:
+    def _handle_bus_frame(self, msg) -> None:
+        """处理一帧总线报文（由 _bus_listener 逐帧调用，异常由调用方兜底）。"""
+        # 忽略自己发送帧的回环副本（模拟环境特有，见 SELF_TX_IDS 说明）
+        if msg.arbitration_id in SELF_TX_IDS:
+            return
+        # ---- 网络管理：任何**其他节点**的总线活动都刷新静默计时 ----
+        self._last_bus_activity = time.monotonic()
+        if self.nm_state == "sleep":
+            self.nm_state = "normal"
+            self.power_mode = 2          # 简化：唤醒即视为恢复上电（真实还需等 IGN）
+            log.warning("检测到 CAN 活动，节点从睡眠唤醒")
+        # ---- 电源模式广播（真实由 BCM 发，本仿真测试脚本可扮演）----
+        if msg.arbitration_id == ID_POWER_MODE and msg.data:
+            mode = msg.data[0]
+            if mode != self.power_mode:
+                log.warning("电源模式变更: %d → %d", self.power_mode, mode)
+            self.power_mode = mode
+            return
+        # 功能寻址 0x7DF：诊断仪向"所有 ECU"广播的请求（OBD-II 扫描仪也走这里）。
+        # 本 ECU 同时监听物理地址 0x7E0 与功能地址 0x7DF，响应统一发 0x7E8。
+        if msg.arbitration_id not in (ID_UDS_REQUEST, ID_UDS_FUNCTIONAL_REQUEST) \
+                or not msg.data:
+            return
+        functional = msg.arbitration_id == ID_UDS_FUNCTIONAL_REQUEST
+        pci = msg.data[0]
+        if pci & 0xF0 == 0x00:      # 单帧 SF：整条请求在一帧里
+            length = pci & 0x0F
+            request = bytes(msg.data[1 : 1 + length])
+            self._handle_request_safely(request, functional)
+            self.last_tester_request_time = time.monotonic()
+        elif pci & 0xF0 == 0x10:    # 首帧 FF：立即回流控帧
+            total = ((pci & 0x0F) << 8) | msg.data[1]
+            self._tp_rx = IsoTpReceiver()
+            self._tp_functional = functional   # 记住请求是功能寻址还是物理寻址
+            try:
+                self._tp_rx.feed(bytes(msg.data))
+            except ValueError as exc:      # 非法首帧：重置状态机，不杀线程
+                log.warning("收到非法首帧（已重置 TP 状态机）: %s", exc)
+                self._tp_rx = IsoTpReceiver()
+                return
+            # FC 是 ECU→Tester 方向，必须发到响应 ID 0x7E8（不是 0x7E0！）
+            # BS=0（不限量）与接收端实现一致：本 ECU 的 IsoTpReceiver
+            # 一次收完不做分块确认。**声明的流控参数必须与实际实现能力
+            # 一致** —— 若声明 BS=8 却不在收满 8 帧后回新 FC，发送方会
+            # 一直等流控帧直到超时（本项目真实踩过的坑）。
+            self.bus.send_frame(ID_UDS_RESPONSE, build_flow_control(0, 0))
+            log.info("收到多帧请求 FF，总长 %d 字节，已回 FC", total)
+        elif pci & 0xF0 == 0x20:    # 连续帧 CF
+            # UDP 组播会丢包/重复/乱序 → 序号错乱时 TP 状态机抛 ValueError。
+            # 必须捕获并重置状态机：否则一帧丢失就会永久杀死诊断监听线程
+            # （现象：周期报文还在发、所有诊断请求石沉大海，真实踩过的坑）。
+            try:
+                done, data = self._tp_rx.feed(bytes(msg.data))
+            except ValueError as exc:
+                log.warning("TP 连续帧异常（已重置 TP 状态机）: %s", exc)
+                self._tp_rx = IsoTpReceiver()
+                return
+            if done and data:
+                self._handle_request_safely(data, self._tp_functional)
+                self.last_tester_request_time = time.monotonic()
+
+    def _handle_request_safely(self, request: bytes,
+                               functional: bool = False) -> None:
         """处理请求并兜住所有异常。
 
         为什么必须兜：诊断处理逻辑里任何未捕获异常（如一个 NameError）
@@ -756,7 +1218,7 @@ class PowertrainEcu:
         导入的 SID 常量）。线程级异常必须记录并继续。
         """
         try:
-            self.handle_uds_request(request)
+            self.handle_uds_request(request, functional=functional)
         except Exception:  # noqa: BLE001
             log.exception("处理 UDS 请求异常（监听线程继续运行）: %s",
                           request.hex())
@@ -772,6 +1234,7 @@ class PowertrainEcu:
                     log.info("S3 超时（5s 无 TesterPresent），回默认会话")
                     self.session = SESSION_DEFAULT
                     self.security_unlocked = False
+                    self._seed = None        # 超时回退后旧种子也作废
 
     # ==================================================================
     # 七、主循环
@@ -795,59 +1258,65 @@ class PowertrainEcu:
         log.info("ECU 主循环运行中")
         try:
             while self._running:
-                now = time.monotonic()
-                dt = now - last_tick
-                last_tick = now
-                self._physics_tick(dt)
+                # 单轮兜底：编码/发送类异常（如某信号超出 DBC 范围）不能让
+                # 整个 ECU 进程退出 —— 否则表现为"进程没了但没人知道原因"。
+                try:
+                    now = time.monotonic()
+                    dt = now - last_tick
+                    last_tick = now
+                    self._physics_tick(dt)
 
-                t_100 += dt
-                t_200 += dt
-                t_500 += dt
-                t_nm += dt
-                # 0x28 通信控制：暂停期间不发周期报文（恢复后立即补发一轮）
-                if not self.comm_tx_enabled:
-                    t_100 = t_200 = t_500 = 0
+                    t_100 += dt
+                    t_200 += dt
+                    t_500 += dt
+                    t_nm += dt
+                    # 0x28 通信控制：暂停期间不发周期报文（恢复后立即补发一轮）
+                    if not self.comm_tx_enabled:
+                        t_100 = t_200 = t_500 = 0
+                        time.sleep(0.01)
+                        continue
+                    # ---- 已休眠：完全静默，只等总线活动唤醒 ----
+                    if self.nm_state == "sleep":
+                        t_100 = t_200 = t_500 = t_nm = 0
+                        time.sleep(0.01)
+                        continue
+                    # ---- 电源未 ON（IGN OFF/ACC）：停发应用报文，只发 NM ----
+                    if self.power_mode != 2:
+                        if t_nm >= 0.5:
+                            t_nm = 0
+                            # IGN OFF 时置睡眠就绪位，向网络声明"我这边可以睡了"
+                            self._send_nm(sleep_ready=1 if self.power_mode == 0 else 0)
+                        if (self.power_mode == 0
+                                and time.monotonic() - self._last_bus_activity
+                                >= self.SLEEP_DELAY_SECONDS):
+                            self.nm_state = "sleep"
+                            log.warning("总线静默 %.1fs，进入睡眠（停止 NM 发送）",
+                                        self.SLEEP_DELAY_SECONDS)
+                        t_100 = t_200 = t_500 = 0
+                        time.sleep(0.01)
+                        continue
+                    if t_100 >= 0.1:
+                        t_100 = 0
+                        if self._should_send(0):        # bit0 = EngineData(0x100)
+                            self._send_engine_data()
+                    if t_200 >= 0.2:
+                        t_200 = 0
+                        if self._should_send(1):        # bit1 = ClusterData(0x200)
+                            self._send_cluster_data()
+                    if t_500 >= 0.5:
+                        t_500 = 0
+                        if self.dtc_detection_enabled:
+                            self.dtc.advance_cycle({
+                                "coolant_temp": self.coolant_temp,
+                                "battery_voltage": self.battery_voltage,
+                                "speed": self.speed_actual,
+                                "o2_heater_fault": getattr(self, "_o2_fault", False),
+                            })
+                        self._send_telltale()
                     time.sleep(0.01)
-                    continue
-                # ---- 已休眠：完全静默，只等总线活动唤醒 ----
-                if self.nm_state == "sleep":
-                    t_100 = t_200 = t_500 = t_nm = 0
-                    time.sleep(0.01)
-                    continue
-                # ---- 电源未 ON（IGN OFF/ACC）：停发应用报文，只发 NM ----
-                if self.power_mode != 2:
-                    if t_nm >= 0.5:
-                        t_nm = 0
-                        # IGN OFF 时置睡眠就绪位，向网络声明"我这边可以睡了"
-                        self._send_nm(sleep_ready=1 if self.power_mode == 0 else 0)
-                    if (self.power_mode == 0
-                            and time.monotonic() - self._last_bus_activity
-                            >= self.SLEEP_DELAY_SECONDS):
-                        self.nm_state = "sleep"
-                        log.warning("总线静默 %.1fs，进入睡眠（停止 NM 发送）",
-                                    self.SLEEP_DELAY_SECONDS)
-                    t_100 = t_200 = t_500 = 0
-                    time.sleep(0.01)
-                    continue
-                if t_100 >= 0.1:
-                    t_100 = 0
-                    if self._should_send(0):        # bit0 = EngineData(0x100)
-                        self._send_engine_data()
-                if t_200 >= 0.2:
-                    t_200 = 0
-                    if self._should_send(1):        # bit1 = ClusterData(0x200)
-                        self._send_cluster_data()
-                if t_500 >= 0.5:
-                    t_500 = 0
-                    if self.dtc_detection_enabled:
-                        self.dtc.advance_cycle({
-                            "coolant_temp": self.coolant_temp,
-                            "battery_voltage": self.battery_voltage,
-                            "speed": self.speed_actual,
-                            "o2_heater_fault": getattr(self, "_o2_fault", False),
-                        })
-                    self._send_telltale()
-                time.sleep(0.01)
+                except Exception:  # noqa: BLE001
+                    log.exception("ECU 主循环单轮异常（继续运行）")
+                    time.sleep(0.05)
         except KeyboardInterrupt:
             pass
         finally:
@@ -926,7 +1395,8 @@ class PowertrainEcu:
             if dtc == "P0135":
                 self._o2_fault = True
             self.dtc.inject_fault(dtc, {"speed": self.speed_actual})
-            print(f"[OK] 已注入 {dtc}: {FAULT_CATALOG[dtc]['name']}")
+            print(f"[OK] 已强制注入 {dtc}: {FAULT_CATALOG[dtc]['name']}"
+                  f"（信号判决被绕过，unject 可撤销）")
             return True
 
         if cmd == "unject":

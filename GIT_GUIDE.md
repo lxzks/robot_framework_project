@@ -6,26 +6,27 @@
 
 ---
 
-## 0. 你现在的真实状态（2026-10-25 更新：**已成功推送到 GitHub** ✅）
+## 0. 你现在的真实状态（2026-10-28 更新：**已成功推送到 GitHub** ✅）
 
 | 项目 | 状态 |
 |---|---|
 | SSH 密钥 | ✅ 已有 `~/.ssh/id_ed25519`，且已配到 GitHub（`Hi lxzks!` 测试通过） |
 | GitHub 用户名 | `lxzks` |
 | 邮箱 | `1520313676@qq.com` |
-| git 身份 | ✅ 已配置（全局） |
+| git 身份 | ✅ 已配置（**本仓库** `.git/config`；全局 `user.name/email` 未配置） |
 | 本地仓库 | ✅ 已 init，分支已改名 **main** |
-| 提交历史 | ✅ `9d04a00`(merge) ← `1657fee new commit` + `ae49d80 Initial commit` |
+| 提交历史 | ✅ `b417a54 new commit`(最新) ← `9d04a00`(merge) ← `1657fee new commit` + `ae49d80 Initial commit` |
 | 远程仓库 | ✅ `git@github.com:lxzks/robot_framework_project.git` |
-| 同步状态 | ✅ 本地 HEAD == origin/main（**122 个文件已推送**） |
+| 同步状态 | ✅ 本地 HEAD `b417a54` == origin/main（已推送文件数随 Wave1/Wave2 模块增加；具体以 `git ls-files` / `git status` 为准） |
 | 分支跟踪 | ✅ `main → origin/main` |
 
 > 🎉 **结论：你已经完成了从零到推送的全流程。** 下面第 1~6 节是"完整知识回顾",
 > **实际动手从第 7 节"日常循环"开始**。
 
 **但留了一个小尾巴**（第 11 节坑 5 会讲）：
-本地的第一个提交信息是 `new commit` —— 不规范。**面试官会点开看**。
-不用回头改（改要 force push，风险大于收益），**从下一次提交开始写规范就行**。
+本地提交信息是 `new commit`（而且最新一次 `b417a54` 也还是 `new commit`）—— 不规范。**面试官会点开看**。
+已经 push 的提交不用回头改（要 force rewrite，风险大于收益），**从下一次提交开始规范**：
+统一用 `feat: / fix: / docs: / test: / refactor: / chore:` 前缀（格式见第 11 节坑 5）。
 
 ---
 
@@ -210,6 +211,12 @@ git config --global core.autocrlf true         # 换行符（不配的话每次�
 git config --global core.quotepath false       # 中文文件名不乱码（否则显示成 \346\226\207）
 ```
 
+> ⚠️ **本机现状（2026-10-28 实测，`git config --list --show-origin`）**：
+> `user.name/user.email` 和 `core.quotepath` 实际只配在**本仓库**（`.git/config`）；
+> `core.autocrlf=true` 与 `init.defaultbranch=master` 来自 Git **系统级**配置
+> （`C:/Program Files/Git/etc/gitconfig`）。所以 `git config --global --list` 目前看不到这 5 行。
+> 想让"以后新建的仓库默认 main / 全局都用这个身份"，把上面三条（和 3.1 两条）真的执行一遍即可。
+
 ### 3.3 验证
 
 ```bash
@@ -296,17 +303,17 @@ git status --short | head -15
 ```bash
 git commit -m "feat: 车载自动化测试平台初始版本
 
-- 三节点仿真：动力域 ECU + 数字仪表 + 安卓车机（UDP 组播虚拟 CAN）
-- Robot Framework 测试：116 用例（主套件 62 + 真实场景 54）
-- 需求追溯：63 条需求，覆盖率 100%，自动生成追溯矩阵
-- 工程化：DBC 驱动用例生成、覆盖率统计、交付报告、CI
-- 文档：22 章教程 + 7 天零基础主线 + 8 道 Python 练习"
+- 三节点仿真：动力域 ECU + 数字仪表 + 安卓车机（UDP 组播虚拟 CAN）+ 扩展模块（LIN/DoIP/视觉/非功能/安全/CAN FD/SOME-IP/安全机制/Trace/OTA/ODX/Appium/HIL）
+- Robot Framework 测试：276 用例（主套件 198 + 真实场景 78）
+- 需求追溯：124 条需求，覆盖率 100%，自动生成追溯矩阵
+- 工程化：DBC 驱动用例生成、覆盖率统计、交付报告、pytest 单元测试、Docker、CI 矩阵
+- 文档：40 章教程（00~39）+ 7 天零基础主线 + 8 道 Python 练习 + 12 个实训"
 ```
 
 **应该看到**（`a1b2c3d` 是提交哈希，你的会不同）：
 ```
 [main (root-commit) a1b2c3d] feat: 车载自动化测试平台初始版本
- 130 files changed, 25000 insertions(+)
+ 121 files changed, 24351 insertions(+)
  create mode 100644 .gitignore
  create mode 100644 README.md
  ...
@@ -334,8 +341,8 @@ git branch
 ### 5.1 建仓库
 
 1. 打开 https://github.com/new
-2. **Repository name**：`vehicle-test-framework`（名字随你）
-3. **Description**：`车载自动化测试平台：ECU/仪表/车机仿真 + 116 用例 + 需求追溯`
+2. **Repository name**：`robot_framework_project`（名字随你）
+3. **Description**：`车载自动化测试平台：ECU/仪表/车机仿真 + 276 用例 + 需求追溯`
 4. **Public**（面试官要能看）
 5. 🔴 **三个勾选框全部不勾**：
    - ❌ Add a README file
@@ -350,13 +357,13 @@ git branch
 
 建好后页面会显示仓库地址，**点 "SSH" 标签**，复制：
 ```
-git@github.com:lxzks/vehicle-test-framework.git
+git@github.com:lxzks/robot_framework_project.git
 ```
 
 ### 5.3 关联远程仓库
 
 ```bash
-git remote add origin git@github.com:lxzks/vehicle-test-framework.git
+git remote add origin git@github.com:lxzks/robot_framework_project.git
 ```
 
 **验证**：
@@ -365,8 +372,8 @@ git remote -v
 ```
 **应该看到两行**：
 ```
-origin  git@github.com:lxzks/vehicle-test-framework.git (fetch)
-origin  git@github.com:lxzks/vehicle-test-framework.git (push)
+origin  git@github.com:lxzks/robot_framework_project.git (fetch)
+origin  git@github.com:lxzks/robot_framework_project.git (push)
 ```
 
 ---
@@ -382,7 +389,7 @@ git push -u origin main
 Enumerating objects: 130, done.
 Counting objects: 100% (130/130), done.
 ...
-To github.com:lxzks/vehicle-test-framework.git
+To github.com:lxzks/robot_framework_project.git
  * [new branch]      main -> main
 branch 'main' set up to track 'origin/main'.
 ```
@@ -404,6 +411,9 @@ git push                    # ④ 推上去
 ```
 
 **开工前**（多人协作时）：`git pull`
+
+> 💡 **提交信息统一用前缀**：`feat:` 新功能 / `fix:` 修 bug / `docs:` 文档 / `test:` 测试 / `refactor:` 重构 / `chore:` 杂项。
+> 面试官会点开 commit 看历史，`new commit`、`update`、`修改一下` 这类信息是减分项。
 
 ### 提交信息怎么写
 
@@ -486,7 +496,7 @@ git clone <地址>                        # 克隆别人的仓库
 你的 GitHub 账号 lxzks
 ├── repo-A                    ← 地址：git@github.com:lxzks/repo-A.git
 ├── repo-B
-└── vehicle-test-framework    ← 这个项目只能指向其中一个
+└── robot_framework_project    ← 这个项目只能指向其中一个
 
 本地文件夹 robot_framework/.git
     └── origin = git@github.com:lxzks/robot_framework_project.git

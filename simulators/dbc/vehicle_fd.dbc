@@ -1,0 +1,106 @@
+VERSION "vehicle-fd-dbc-1.0"
+
+
+NS_ :
+    NS_DESC_
+    CM_
+    BA_DEF_
+    BA_
+    VAL_
+    SIG_VALTYPE_
+
+
+BS_:
+
+BU_: ADAS CLUSTER TESTER IVI
+
+
+BO_ 1024 VehicleStatusFD: 64 ADAS
+ SG_ VehicleSpeedFD : 0|32@1- (1,0) [0|65535] "km/h" CLUSTER,TESTER
+ SG_ EngineSpeed : 32|16@1+ (1,0) [0|65535] "rpm" CLUSTER,TESTER
+ SG_ GearPosition : 48|4@1+ (1,0) [0|15] "" CLUSTER,TESTER
+ SG_ VehicleMode : 52|4@1+ (1,0) [0|15] "" CLUSTER,TESTER
+ SG_ MilWarning : 64|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ OilPressureLow : 65|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ CoolantTempHigh : 66|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ BatteryLow : 67|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ AbsFault : 68|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ AirbagFault : 69|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ SeatbeltWarning : 70|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ TurnLeft : 71|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ TurnRight : 72|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ HighBeam : 73|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ LowBeam : 74|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ ParkBrake : 75|1@1+ (1,0) [0|1] "" CLUSTER,TESTER
+ SG_ TimestampMs : 80|32@1+ (1,0) [0|4294967295] "ms" CLUSTER,TESTER
+ SG_ BatteryVoltageFD : 112|32@1- (1,0) [0|60] "V" CLUSTER,TESTER
+ SG_ LongitudinalAccel : 144|32@1- (1,0) [-20|20] "m/s2" CLUSTER,TESTER
+ SG_ OdometerFD : 176|32@1- (1,0) [0|999999] "km" CLUSTER,TESTER
+
+
+BO_ 1025 ObjectList: 64 ADAS
+ SG_ Obj1X : 0|32@1- (1,0) [-500|500] "m" CLUSTER,TESTER
+ SG_ Obj1Y : 32|32@1- (1,0) [-500|500] "m" CLUSTER,TESTER
+ SG_ Obj1Distance : 64|32@1- (1,0) [0|500] "m" CLUSTER,TESTER
+ SG_ Obj2X : 96|32@1- (1,0) [-500|500] "m" CLUSTER,TESTER
+ SG_ Obj2Y : 128|32@1- (1,0) [-500|500] "m" CLUSTER,TESTER
+ SG_ Obj2Distance : 160|32@1- (1,0) [0|500] "m" CLUSTER,TESTER
+ SG_ Obj3X : 192|32@1- (1,0) [-500|500] "m" CLUSTER,TESTER
+ SG_ Obj3Y : 224|32@1- (1,0) [-500|500] "m" CLUSTER,TESTER
+ SG_ Obj3Distance : 256|32@1- (1,0) [0|500] "m" CLUSTER,TESTER
+ SG_ Obj4X : 288|32@1- (1,0) [-500|500] "m" CLUSTER,TESTER
+ SG_ Obj4Y : 320|32@1- (1,0) [-500|500] "m" CLUSTER,TESTER
+ SG_ Obj4Distance : 352|32@1- (1,0) [0|500] "m" CLUSTER,TESTER
+ SG_ ObjectCount : 384|8@1+ (1,0) [0|4] "" CLUSTER,TESTER
+
+
+BO_ 1026 ControlCommand: 64 TESTER
+ SG_ CommandId : 0|8@1+ (1,0) [0|255] "" ADAS
+ SG_ CommandValue : 8|32@1+ (1,0) [0|4294967295] "" ADAS
+ SG_ CommandPayload : 40|472@1+ (1,0) [0|0] "" ADAS
+
+
+VAL_ 1024 GearPosition 0 "P" 1 "R" 2 "N" 3 "D" 4 "S" 5 "L" ;
+VAL_ 1024 VehicleMode 0 "INIT" 1 "DRIVING" 2 "DEGRADED" 3 "SAFE_STATE" ;
+
+
+SIG_VALTYPE_ 1024 VehicleSpeedFD : 1;
+SIG_VALTYPE_ 1024 BatteryVoltageFD : 1;
+SIG_VALTYPE_ 1024 LongitudinalAccel : 1;
+SIG_VALTYPE_ 1024 OdometerFD : 1;
+SIG_VALTYPE_ 1025 Obj1X : 1;
+SIG_VALTYPE_ 1025 Obj1Y : 1;
+SIG_VALTYPE_ 1025 Obj1Distance : 1;
+SIG_VALTYPE_ 1025 Obj2X : 1;
+SIG_VALTYPE_ 1025 Obj2Y : 1;
+SIG_VALTYPE_ 1025 Obj2Distance : 1;
+SIG_VALTYPE_ 1025 Obj3X : 1;
+SIG_VALTYPE_ 1025 Obj3Y : 1;
+SIG_VALTYPE_ 1025 Obj3Distance : 1;
+SIG_VALTYPE_ 1025 Obj4X : 1;
+SIG_VALTYPE_ 1025 Obj4Y : 1;
+SIG_VALTYPE_ 1025 Obj4Distance : 1;
+
+
+BA_DEF_ BO_ "VFrameFormat" ENUM "StandardCAN","ExtendedCAN","reserved","J1939PG","reserved","reserved","reserved","reserved","reserved","reserved","reserved","reserved","reserved","reserved","StandardCAN_FD","ExtendedCAN_FD";
+BA_DEF_ BO_ "CANFD_BRS" ENUM "0","1";
+BA_DEF_ "BusType" STRING ;
+BA_DEF_DEF_ "BusType" "CAN FD";
+BA_DEF_DEF_ "VFrameFormat" "StandardCAN";
+BA_DEF_DEF_ "CANFD_BRS" "0";
+BA_ "BusType" "CAN FD";
+BA_ "VFrameFormat" BO_ 1024 14;
+BA_ "CANFD_BRS" BO_ 1024 1;
+BA_ "VFrameFormat" BO_ 1025 14;
+BA_ "CANFD_BRS" BO_ 1025 1;
+BA_ "VFrameFormat" BO_ 1026 14;
+BA_ "CANFD_BRS" BO_ 1026 1;
+
+
+CM_ "CAN FD teaching database for the robot_framework vehicle project. Data phase up to 64 bytes, BRS/ESI flags, float32 signals via SIG_VALTYPE_. See docs chapter 29 (CAN FD and high speed bus).";
+CM_ BO_ 1024 "ADAS domain controller status frame. 64 bytes, 20 ms period, BRS=1 (data phase 5 Mbps in real hardware).";
+CM_ BO_ 1025 "ADAS perception object list. 4 obstacles x (x, y, distance) as float32. 64 bytes, 50 ms period.";
+CM_ BO_ 1026 "Tester control command. Variable length 8..64 bytes; DLC must match the payload length.";
+CM_ SG_ 1024 VehicleSpeedFD "IEEE-754 float32 (SIG_VALTYPE_=1). Raw 4-byte field, no DBC scaling.";
+CM_ SG_ 1024 TimestampMs "Rolling millisecond timestamp, used to prove the frame keeps refreshing.";
+CM_ SG_ 1025 Obj1X "IEEE-754 float32; same layout for Obj2/3/4 at +96 bit steps.";

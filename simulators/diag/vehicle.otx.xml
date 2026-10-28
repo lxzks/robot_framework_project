@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+================================================================================
+ vehicle.otx.xml — 教学版 OTX（Open Test sequence eXchange）子集
+================================================================================
+ 真实 OTX 是 ISO 13209 定义的测试序列交换格式（XML 命名空间 otx），
+ 包含变量、流程控制、库函数、断言等完整编程模型，通常由 CANoe/OTX Studio
+ 编辑并执行。本文件只保留"数据驱动诊断序列"的最小闭环（教学版简化点）：
+   1) 一个 5 步顺序序列（无分支/循环/变量），步骤类型只有 request / expect；
+   2) request 步骤用 service/subfunction/did 等属性描述请求（不写死 hex）；
+   3) expect 步骤断言"上一条 response"的 payload：支持 ASCII 长度 + 正则、
+      也支持十六进制精确比较（本项目用到 ASCII + 正则）；
+   4) 步骤失败时执行器必须报出**第几步、步骤名**——这是 OTX 相比手写脚本
+      最大的可维护性优势：失败定位直接到测试步骤。
+
+ 序列设计（对应 docs/36 第 36.6 节的逐条讲解）：
+   步骤 1 request  进入扩展会话（10 03）
+   步骤 2 request  读取 VIN（22 F1 90，17 字节 ASCII，走 ISO-TP 多帧）
+   步骤 3 expect   校验 VIN：长度 17 + 格式 ^LSVAM4180NC[0-9]{6}$
+   步骤 4 request  读取软件版本（22 F1 88）
+   步骤 5 expect   校验软件版本：长度 16 + 格式 ^SW-CLUSTER-[0-9]+[.][0-9]+[.][0-9]+$
+
+ 运行方式（由 libraries/OdxLibrary.py 的 Run OTX Sequence 执行）：
+   - request：通过 VirtualCanBus + DiagnosticTester 发到 0x7E0，等 0x7E8 响应
+   - expect ：对最近一条响应做断言；失败抛"第 N 步「步骤名」失败：…"
+================================================================================
+-->
+<otx:test-sequence xmlns:otx="http://iso.org/otx/1.0"
+                   short-name="CLUSTER_BasicCheck"
+                   version="1.0.0">
+  <otx:description>
+    仪表 ECU 基础诊断序列：进扩展会话 → 读 VIN → 校验 VIN → 读软件版本 → 校验版本格式。
+    用于演示 OTX"用数据库/序列描述测试，而不是手写一串 hex"的工作方式。
+  </otx:description>
+
+  <otx:steps>
+
+    <otx:step id="1" type="request" name="进入扩展会话" service="0x10" subfunction="0x03">
+      <otx:description>发送 10 03 进入扩展诊断会话（只有扩展会话才开放写/例程等高权限服务）</otx:description>
+    </otx:step>
+
+    <otx:step id="2" type="request" name="读取 VIN" service="0x22" did="F190">
+      <otx:description>发送 22 F1 90 读取 VIN；响应 20 字节，测试端需自动完成 ISO-TP 多帧重组</otx:description>
+    </otx:step>
+
+    <otx:step id="3" type="expect" name="校验 VIN 格式" service="0x22" did="F190"
+              encoding="ASCII" length="17" pattern="^LSVAM4180NC[0-9]{6}$">
+      <otx:description>断言 VIN 是 17 位 ASCII，且符合本项目车辆 VIN 前缀格式 LSVAM4180NC + 6 位数字</otx:description>
+    </otx:step>
+
+    <otx:step id="4" type="request" name="读取软件版本" service="0x22" did="F188">
+      <otx:description>发送 22 F1 88 读取软件版本号（如 SW-CLUSTER-3.2.1）</otx:description>
+    </otx:step>
+
+    <otx:step id="5" type="expect" name="校验软件版本格式" service="0x22" did="F188"
+              encoding="ASCII" length="16" pattern="^SW-CLUSTER-[0-9]+[.][0-9]+[.][0-9]+$">
+      <otx:description>断言软件版本是 16 位 ASCII 且符合 SW-CLUSTER-主.次.修订 的版本格式</otx:description>
+    </otx:step>
+
+  </otx:steps>
+</otx:test-sequence>

@@ -20,24 +20,27 @@
 
 ## 21.0 先看一张"特性分布图"（知道去哪查）
 
+> 统计口径：项目内 `.py`（不含 `.venv` / `__pycache__` / 演示与练习模板的重复计数），
+> 数量会随代码迭代变化，**只用来判断"该不该学"，不必背精确值**。
+
 | 特性 | 项目里出现 | 主要在哪 | 本文哪节 | 重要度 |
 |---|---|---|---|---|
-| **import / sys.path** | 29 个文件 | 所有文件开头 | 21.1.3 | 🟢 必会 |
-| **f-string 格式化** | 28 个文件 | 所有文件 | 21.1.1 | 🟢 必会 |
-| **pathlib 路径** | 26 个文件 | 所有文件 | 21.1.2 | 🟢 必会 |
-| **类型注解** | 25 个文件 | 所有函数签名 | 21.1.4 | 🟢 必会 |
-| **异常处理 try/except** | 16 个文件 | ecu_sim / dashboard | 21.3.1 | 🟢 必会 |
-| **time 计时** | 16 个文件 | ECU 主循环 / 库 | 21.4.3 | 🟢 必会 |
-| **dict 推导 / setdefault** | 12 个文件 | 数据处理处 | 21.5.3 | 🟡 会读 |
-| **argparse** | 12 个文件 | `__main__` 里 | 21.3.3 | 🟡 会读 |
-| **魔法方法 `__init__`** | 11 个文件 | 所有类 | 21.2.1 | 🟢 必会 |
-| **lambda** | 10 个文件 | dtc_manager | 21.5.1 | 🟡 会读 |
-| **logging** | 7 个文件 | 仿真进程 | 21.3.2 | 🟡 会读 |
-| **多线程 threading** | 2 个文件 | ecu_sim / dashboard | 21.4.1 | 🟡 会读 |
-| **@dataclass** | 2 个文件 | dtc_manager | 21.2.3 | 🟡 会读 |
-| **生成器 yield** | 2 个文件 | 结果树遍历 | 21.6 | ⚪ 了解 |
-| **ABC / Enum** | 1 个文件 | — | 21.6 | ⚪ 了解 |
-| **`__enter__/__exit__`** | 1 个文件 | bus.py | 21.6 | ⚪ 了解 |
+| **import / sys.path** | 32 个文件 | 所有文件开头 | 21.1.3 | 🟢 必会 |
+| **f-string 格式化** | 30 个文件 | 所有文件 | 21.1.1 | 🟢 必会 |
+| **pathlib 路径** | 29 个文件 | 所有文件 | 21.1.2 | 🟢 必会 |
+| **类型注解** | 28 个文件 | 所有函数签名 | 21.1.4 | 🟢 必会 |
+| **异常处理 try/except** | 18 个文件 | ecu_sim / dashboard | 21.3.1 | 🟢 必会 |
+| **time 计时** | 20 个文件 | ECU 主循环 / 库 | 21.4.3 | 🟢 必会 |
+| **dict 推导 / setdefault** | 15 个文件 | 数据处理处 | 21.5.3 | 🟡 会读 |
+| **argparse** | 14 个文件 | `__main__` 里 | 21.3.3 | 🟡 会读 |
+| **魔法方法 `__init__`** | 13 个文件 | 所有类 | 21.2.1 | 🟢 必会 |
+| **lambda** | 9 个文件 | dtc_manager | 21.5.1 | 🟡 会读 |
+| **logging** | 8 个文件 | 仿真进程 | 21.3.2 | 🟡 会读 |
+| **多线程 threading** | 3 个文件 | ecu_sim / uds_client（+演示） | 21.4.1 | 🟡 会读 |
+| **@dataclass** | 5 个文件 | dtc_manager / uds_lib / 练习模板 | 21.2.3 | 🟡 会读 |
+| **生成器 yield** | 3 个文件 | trace_matrix / coverage_report | 21.6 | ⚪ 了解 |
+| **ABC / Enum** | 1 个文件（仅演示） | python_basics_demo.py（主代码未用） | 21.6 | ⚪ 了解 |
+| **`__enter__/__exit__`** | 2 个文件 | bus.py（+演示） | 21.6 | ⚪ 了解 |
 
 **读法**：🟢 的 6 项必须会（不然读不了任何文件）；🟡 会读就行（不用会写）；⚪ 遇到再看。
 
@@ -397,7 +400,6 @@ DEBUG  <  INFO  <  WARNING  <  ERROR  <  CRITICAL
 （调试）  （信息）   （警告）    （错误）   （致命）
 
 启动时可以用参数控制只显示哪个级别以上：
-    self.assertEqual(...)  ← 不对，是这个：
     logging.basicConfig(level=logging.INFO)
 ```
 
@@ -728,10 +730,10 @@ by_req.setdefault(rid, []).append(t)
 
 | 特性 | 什么时候会遇到 | 一句话解释 |
 |---|---|---|
-| **生成器 `yield`** | 读 `trace_matrix.py` 的 `iter_all_keywords` | 函数里有 `yield` 就是"每次调用产出一个值"的生成器，用于**惰性遍历**（不用一次性把所有结果建出来）。你读代码时把它当"会被反复调用的循环"理解即可 |
-| **抽象类 `ABC`** | 少见的基类定义 | 声明"子类必须实现这些方法"，用于强制接口一致 |
-| **枚举 `Enum`** | 状态/模式的定义 | 用有名字的常量代替魔法数字（如 `SESSION_DEFAULT = 0x01`） |
-| **`__enter__/__exit__`** | `bus.py` 里 `with VirtualCanBus(...) as bus` | `with` 语句背后的协议：进入时调 `__enter__`，退出时调 `__exit__`（本项目用它保证"退出时自动关闭总线"） |
+| **生成器 `yield`** | 读 `coverage_report.py` 的 `iter_all_keywords`（`trace_matrix.py` 里是 `iter_tests`） | 函数里有 `yield` 就是"每次调用产出一个值"的生成器，用于**惰性遍历**（不用一次性把所有结果建出来）。你读代码时把它当"会被反复调用的循环"理解即可 |
+| **抽象类 `ABC`** | 少见的基类定义（本项目主代码未用，仅 `python_basics_demo.py` 演示 Enum） | 声明"子类必须实现这些方法"，用于强制接口一致 |
+| **枚举 `Enum`** | 状态/模式的定义（本项目用模块级常量代替 Enum） | 用有名字的常量代替魔法数字（如 `SESSION_DEFAULT = 0x01`） |
+| **`__enter__/__exit__`** | `bus.py` 里 `with VirtualCanBus(...) as bus`（+ `python_basics_demo.py` 演示） | `with` 语句背后的协议：进入时调 `__enter__`，退出时调 `__exit__`（本项目用它保证"退出时自动关闭总线"） |
 | **`__repr__`** | 打印对象时 | 定义"print(对象) 时显示什么"，方便调试 |
 
 > 遇到看不懂的语法，**先把这一节当索引跳回来**，而不是从头啃。
@@ -745,12 +747,11 @@ by_req.setdefault(rid, []).append(t)
 **读法建议**：打开文件，对照下面每段看。
 
 ```python
-# ① 文件头部：导入
+# ① 文件头部：导入（dtc_manager.py 实际导入如下，没有 Enum/IntFlag）
 from dataclasses import dataclass, field      # @dataclass（21.2.3）
 from typing import Dict, List, Optional        # 类型注解（21.1.4）
-from enum import IntFlag                       # 枚举（21.6）
 
-# ② 常量区：状态位定义
+# ② 常量区：状态位定义（普通 int 常量，不是 Enum）
 STATUS_BIT_NAMES = [
     (0x01, "testFailed"),
     (0x04, "pendingDTC"),
@@ -777,23 +778,23 @@ class DtcRecord:
     status: int = 0
     ...
 
-# ⑤ 管理器类：核心逻辑（21.2.1）
+# ⑤ 管理器类：核心逻辑（21.2.1）—— 下面是**极简示意**，真实实现见 164-211 行
 @dataclass
 class DtcManager:
-    def advance_cycle(self, signals: Dict) -> None:
+    def advance_cycle(self, signals: Dict) -> Dict[str, bool]:
         """每个诊断周期调用一次：检查所有故障条件，推进状态机"""
         for dtc, info in FAULT_CATALOG.items():
             detector = info["detect"]            # 取出 lambda
             if detector(signals):                # 调用它判断
-                self._confirm(dtc)
+                ...                              # 真实实现：置 pending / 累计确认 / 置 confirmed
             else:
-                self._age(dtc)
+                ...                              # 真实实现：clear pending / aging / 自动清除
 
 # ⑥ 文件末尾：自测（`if __name__ == "__main__":`）
 if __name__ == "__main__":
     # 这里的代码只有在"直接跑这个文件"时才执行
     mgr = DtcManager()
-    mgr.advance_cycle({"coolant_temp": 125})
+    mgr.advance_cycle({"coolant_temp": 125, "battery_voltage": 13.8})
     print(mgr.list_dtcs())
 ```
 
@@ -861,7 +862,7 @@ python simulators/dtc_manager.py    # 直接跑它的自测，看输出
 | 10 | 给方法起一个 **RF 用的别名** → `.robot` 里就能用 `Read Signal From Bus` 调它（装饰器是 RF 库与用例之间的桥） |
 | 11 | 省掉手写 `__init__` / `__repr__` / `__eq__` → **你只写字段名和类型** |
 | 12 | 读作："遍历 `d.items()` 的每个键值对 → **筛出 v 为真的** → 收集它们的 `name` → 组成列表" |
-| 13 | ```python if k not in d: d[k] = []  /  d[k].append(x)```（即"没有就创建空列表，然后追加"） |
+| 13 | 等价于：`if k not in d: d[k] = []` 然后 `d[k].append(x)`（即"没有就创建空列表，然后追加"） |
 | 14 | 因为 Python 里**函数也是对象**（可以当值传递/存储）→ lambda 就是个匿名函数，能像数字、字符串一样存进字典 |
 | 15 | `Timer` **不阻塞**（挂上就返回，N 秒后自动调用）；`sleep(N)` 会把当前线程**卡住 N 秒**什么都干不了 |
 

@@ -138,13 +138,23 @@ class DtcManager:
     confirm_threshold: int = 2
     aging_limit: int = 40
     _records: Dict[str, DtcRecord] = field(default_factory=dict)
+    # 手动强制注入的 DTC 集合（控制台 inject / 测试用）。
+    # 为什么需要：真实 ECU 靠传感器异常自然触发；但台架/教学需要"强制注入"，
+    # 不能只写快照而没有任何检测效果（过去 inject 只写 snapshot，故障根本
+    # 不会产生，属于误导）。
+    _forced: set = field(default_factory=set)
     cycle_count: int = 0
 
     # ------------------------------------------------------------------ 注入
     def inject_fault(self, dtc: str, signals: Optional[Dict] = None) -> None:
-        """手动注入一个故障（教学/测试用，真实 ECU 靠传感器异常自然触发）。"""
+        """强制注入一个故障（教学/测试用，真实 ECU 靠传感器异常自然触发）。
+
+        注入后 `advance_cycle` 会把它当作"故障存在"（与信号模型 OR 关系），
+        直到 `clear_fault_injection()` 撤销。
+        """
         if dtc not in FAULT_CATALOG:
             raise ValueError(f"未知 DTC {dtc}，可选: {list(FAULT_CATALOG)}")
+        self._forced.add(dtc)
         rec = self._records.setdefault(dtc, DtcRecord(dtc=dtc))
         if rec.first_seen is None:
             rec.first_seen = time.time()
@@ -154,11 +164,11 @@ class DtcManager:
         }
 
     def clear_fault_injection(self, dtc: str) -> None:
-        """撤销手动注入。"""
-        if dtc in FAULT_CATALOG:
-            FAULT_CATALOG[dtc]["detect"]  # noqa: 只是文档提示
-        # 简化：置一个标志，让下次 advance_cycle 时该故障"消失"
-        self._records.get(dtc, DtcRecord(dtc=dtc)).snapshot = None
+        """撤销强制注入（故障判定回到信号模型），同时清掉快照。"""
+        self._forced.discard(dtc)
+        rec = self._records.get(dtc)
+        if rec is not None:
+            rec.snapshot = None
 
     # ------------------------------------------------------------------ 主循环
     def advance_cycle(self, signals: Dict) -> Dict[str, bool]:
@@ -167,7 +177,9 @@ class DtcManager:
         active: Dict[str, bool] = {}
 
         for dtc, spec in FAULT_CATALOG.items():
-            fault_present = spec["detect"](signals)
+            # 强制注入（控制台/测试）与信号模型是"或"关系：
+            # 注入后即使信号正常，该故障依然判定为存在。
+            fault_present = dtc in self._forced or spec["detect"](signals)
             active[dtc] = fault_present
             rec = self._records.setdefault(dtc, DtcRecord(dtc=dtc))
 

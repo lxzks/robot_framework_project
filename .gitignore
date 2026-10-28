@@ -40,3 +40,19 @@ simulators/*.tmp
 
 # AI 助手的工作记忆（含个人工作日志，绝不外传）
 .workbuddy/
+
+# AI 助手/审计工具的临时工作目录（不属于项目交付物）
+.qwen/
+.audit/
+
+# pytest 缓存（pytest 单元测试生成；部分沙箱环境下目录 ACL 异常，直接忽略）
+.pytest_cache/
+pytest-cache-files-*/
+tools/pytest_style/.pytest_cache/
+
+# 运行时日志（仿真进程可能生成的其他日志）
+simulators/*.log
+simulators/*.pid
+
+# 根目录误产生的第三方日志（如输入法 debug.log）
+debug.log

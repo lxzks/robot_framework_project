@@ -157,6 +157,6 @@ def simulate_periodic(duration_s: float, period_ms: float,
 
 1. **P9（扩展）**：给 `libraries/VehicleBusLibrary.py` 加一个你自己的关键字
    （用 `@keyword("你的名字")`），然后在 `scenarios/` 里写个用例调用它
-2. **P10（扩展）**：照 `scenarios/01_powertrain_signals.robot` 的风格，写一个全新场景
-   （比如"油量低于 10% 应点亮加油灯"）
+2. **P10（扩展）**：照 `scenarios/11_fault_injection.robot` 的风格，写一个"9V 低压 → P0562 + BatteryLow 灯"的场景
+   （提示：`Set Test Stimulus    voltage=9` 注入，`Test Teardown` 里 `Clear Test Stimulus`；参考 README P10）
 3. 回到 [`docs/21_Python补强.md`](../docs/21_Python补强.md)，把没读的章节补完

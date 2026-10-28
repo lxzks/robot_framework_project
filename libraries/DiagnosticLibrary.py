@@ -64,6 +64,22 @@ class DiagnosticLibrary:
         info(f"请求 {req.hex()} → {resp.describe()}")
         return resp.describe()
 
+    def _send_positive_with_retry(self, request_hex: str) -> None:
+        """发送请求并断言正响应；对**幂等**请求在超时后重试一次。
+
+        虚拟总线是 UDP 组播、没有真实 CAN 的帧重传，偶发丢一帧会让本来
+        会正常响应的请求表现为超时（本项目真实 flaky 根因之一）。这里只给
+        会话控制 / TesterPresent / 读数据 / 清码等**重复执行无副作用**的请求
+        一次重试；写 DID、例程启动、刷写等有副作用的请求仍单次执行，
+        避免"重试把动作做两遍"。
+        """
+        try:
+            self.send_uds_request(request_hex)
+        except TimeoutError:
+            info(f"请求 {request_hex} 超时（UDP 组播无重传，疑似丢帧）→ 重试一次")
+            self.send_uds_request(request_hex)
+        self.response_should_be_positive()
+
     @keyword("ECU Should Respond")
     def ecu_should_respond(self) -> None:
         """断言 ECU 在线：发 TesterPresent 并期望正响应。
@@ -71,8 +87,7 @@ class DiagnosticLibrary:
         Suite Setup 的环境就绪检查用 —— 比"看进程起来"更可靠，
         直接验证诊断链路通。
         """
-        self.send_uds_request("3E 00")
-        self.response_should_be_positive()
+        self._send_positive_with_retry("3E 00")
 
     @keyword("Close Diagnostic Tester")
     def close_diagnostic_tester(self) -> None:
@@ -107,27 +122,23 @@ class DiagnosticLibrary:
     @keyword("Enter Extended Session")
     def enter_extended_session(self) -> None:
         """进入扩展诊断会话（10 03）—— 开放写/例程等高级功能"""
-        self.send_uds_request("10 03")
-        self.response_should_be_positive()
+        self._send_positive_with_retry("10 03")
 
     @keyword("Enter Default Session")
     def enter_default_session(self) -> None:
         """回到默认诊断会话（10 01）"""
-        self.send_uds_request("10 01")
-        self.response_should_be_positive()
+        self._send_positive_with_retry("10 01")
 
     @keyword("Tester Present")
     def tester_present(self) -> None:
         """发送 TesterPresent（3E 00）保活，防止 S3 超时回默认会话"""
-        self.send_uds_request("3E 00")
-        self.response_should_be_positive()
+        self._send_positive_with_retry("3E 00")
 
     # ------------------------------------------------------------------ 安全访问
     @keyword("Request Seed")
     def request_seed(self) -> str:
         """请求安全访问种子（27 01），返回 4 字节种子的 hex"""
-        self.send_uds_request("27 01")
-        self.response_should_be_positive()
+        self._send_positive_with_retry("27 01")
         seed = self._last_response.payload[1:5]
         return seed.hex()
 
@@ -156,8 +167,7 @@ class DiagnosticLibrary:
 
         例：${data}=    Read DID    F190
         """
-        self.send_uds_request(f"22 {did}")
-        self.response_should_be_positive()
+        self._send_positive_with_retry(f"22 {did}")
         data = self._last_response.payload[2:]
         return data.hex()
 
@@ -177,8 +187,7 @@ class DiagnosticLibrary:
     @keyword("Read DTC Count")
     def read_dtc_count(self) -> int:
         """读取 DTC 总数（19 01）"""
-        self.send_uds_request("19 01")
-        self.response_should_be_positive()
+        self._send_positive_with_retry("19 01")
         count = self._last_response.payload[2]
         return count
 
@@ -188,8 +197,7 @@ class DiagnosticLibrary:
 
         mask=08 → 只读 confirmed；mask=FF → 全部
         """
-        self.send_uds_request(f"19 02 {mask}")
-        self.response_should_be_positive()
+        self._send_positive_with_retry(f"19 02 {mask}")
         body = self._last_response.payload[1:]   # 去掉 sub-function 回显
         result = []
         i = 1
@@ -212,8 +220,7 @@ class DiagnosticLibrary:
     @keyword("Clear DTC")
     def clear_dtc(self) -> None:
         """清除全部 DTC（14 FF FF FF）"""
-        self.send_uds_request("14 FF FF FF")
-        self.response_should_be_positive()
+        self._send_positive_with_retry("14 FF FF FF")
 
     # ------------------------------------------------------------------ 例程
     @keyword("Start Routine")
@@ -224,7 +231,7 @@ class DiagnosticLibrary:
 
     @keyword("Start Light Test Routine")
     def start_light_test_routine(self) -> None:
-        """启动仪表灯光测试例程（31 01 0301）：点亮所有警告灯 2 秒"""
+        """启动仪表灯光测试例程（31 01 0301）：点亮所有警告灯 4 秒"""
         self.send_uds_request("31 01 0301")
         self.response_should_be_positive()
 
@@ -237,15 +244,13 @@ class DiagnosticLibrary:
         测试注入的值会与 ECU 的周期帧混在总线上，读回"到底是谁的"说不清。
         真实台架测试与刷写流程都用这条服务独占总线。
         """
-        self.send_uds_request("28 01 01")
-        self.response_should_be_positive()
+        self._send_positive_with_retry("28 01 01")
         info("ECU 周期报文已暂停（28 01 01）")
 
     @keyword("Resume ECU Periodic Messages")
     def resume_ecu_periodic_messages(self) -> None:
         """恢复 ECU 周期报文（28 00）"""
-        self.send_uds_request("28 00")
-        self.response_should_be_positive()
+        self._send_positive_with_retry("28 00")
         info("ECU 周期报文已恢复（28 00）")
 
     # ------------------------------------------------------------------ 测试激励（工程模式 DID）
@@ -293,8 +298,7 @@ class DiagnosticLibrary:
     @keyword("Enter Programming Session")
     def enter_programming_session(self) -> None:
         """进入编程会话（10 02）—— 刷写的前置条件"""
-        self.send_uds_request("10 02")
-        self.response_should_be_positive()
+        self._send_positive_with_retry("10 02")
 
     @keyword("Request Download")
     def request_download(self, address: str = "08000000", size: int = 128) -> int:
@@ -319,10 +323,34 @@ class DiagnosticLibrary:
 
     @keyword("Transfer Data Block")
     def transfer_data_block(self, block_counter: int, data_hex: str) -> None:
-        """传输数据块（0x36）：块序号 + 数据（十六进制）"""
+        """传输数据块（0x36）：块序号 + 数据（十六进制）
+
+        正响应是 `76 <blockSequenceCounter>`，必须**回显校验**：块序号回显
+        错误（如固定回 1）只断言"正响应"是查不出来的。
+
+        为什么带一次重试：0x36 请求通常是 60+ 字节的多帧（FF+CF），而虚拟
+        总线是 UDP 组播、没有真实 CAN 的帧重传；高负载下偶发丢一帧就会整条
+        请求超时（KNOWN_ISSUES「UDP 无重传」）。重试时若 ECU 回 NRC 0x73
+        wrongBlockSequenceCounter，说明**首次其实已到达并处理**（块号已前进），
+        按成功处理，不误判为产品缺陷；真正的数据/状态错误仍会失败。
+        """
         block = int(block_counter) & 0xFF
-        self.send_uds_request(f"36 {block:02x} {data_hex}")
+        request_hex = f"36 {block:02x} {data_hex}"
+        try:
+            self.send_uds_request(request_hex)
+        except TimeoutError:
+            info("0x36 块传输超时（UDP 组播无重传，疑似丢帧）→ 重试一次")
+            self.send_uds_request(request_hex)
+            resp = self._last_response
+            if resp is not None and not resp.positive and resp.nrc == 0x73:
+                info("重试收到 NRC 0x73 —— 首次请求已到达 ECU，按成功处理")
+                return
         self.response_should_be_positive()
+        payload = self._last_response.payload
+        echoed = payload[0] if payload else None
+        if echoed != block:
+            raise AssertionError(
+                f"0x36 正响应回显块序号 {echoed} ≠ 请求块序号 {block}")
 
     @keyword("Request Transfer Exit")
     def request_transfer_exit(self) -> None:
@@ -333,8 +361,7 @@ class DiagnosticLibrary:
     @keyword("Check Programming Integrity")
     def check_programming_integrity(self) -> None:
         """检查编程完整性（31 01 FF00）：校验和/长度比对，结果 00=通过"""
-        self.send_uds_request("31 01 FF00")
-        self.response_should_be_positive()
+        self._send_positive_with_retry("31 01 FF00")
 
     @keyword("Integrity Check Result Should Be")
     def integrity_check_result_should_be(self, result: int) -> None:

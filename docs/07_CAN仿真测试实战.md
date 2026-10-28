@@ -1,6 +1,6 @@
 # 07 · CAN 仿真测试实战：01 套件逐行精讲
 
-> 本章把 `tests/robot/01_can_signals.robot` 的 7 个用例逐个拆开：测什么、怎么测、为什么这样设计、对应真实工作的哪部分。
+> 本章把 `tests/robot/01_can_signals.robot` 的 8 个用例逐个拆开：测什么、怎么测、为什么这样设计、对应真实工作的哪部分。
 >
 > 前置：先按 06 章跑通环境，并启动 `ecu_sim.py --speed 60` 手动观察总线。
 
@@ -89,7 +89,7 @@ Suite Teardown   Stop Vehicle Environment
 
 **注意读取时序**：两次 `Read Signal From Bus` 之间车还在加速（~100ms 差 0.8 km/h → 转速差 64 rpm），所以容差给到 300。
 
-**举一反三**：加一个用例验证"档位与车速一致"：speed<1 → gear=0(P)，speed≥1 → gear=3(D)。（03 章有类似思路，但那是仪表侧断言。）
+**举一反三**：加一个用例验证"档位与车速一致"：speed<1 → gear=0(P)，speed≥1 → gear=3(D)。（联动断言的思路见本章用例 3；仪表侧全 12 灯的矩阵校验在 `scenarios/02_telltale_matrix.robot`。）
 
 ---
 
@@ -153,6 +153,8 @@ Suite Teardown   Stop Vehicle Environment
 
 **测什么**：无故障时，TelltaleStatus 报文的警告灯 bit 全 0。
 
+> ⚠️ 注意：**本用例只断言了 `MilWarning` 一位**；12 个灯的全量矩阵校验在 `scenarios/02_telltale_matrix.robot`（`All Telltales Should Be Off` / 自检后全灭）。真实项目里位图类报文必须做全矩阵，"只测一个 bit"是常见漏测模式——可以把它当扩展练习补全（FOR 循环遍历 12 个信号名逐个断言）。
+
 **两个 API 的配合**：
 - `Wait For CAN Frame 0x300`：等一帧指定 ID 的报文，返回 **hex 数据**（如 `0000`）——用于"看原始字节"的场景；
 - `Read Signal From Bus TelltaleStatus MilWarning`：等同一帧并解码出**信号值**——用于"看物理值"的场景。
@@ -163,9 +165,34 @@ Suite Teardown   Stop Vehicle Environment
 
 ---
 
-## 7.8 本章小结：CAN 信号测试的方法论
+## 7.8 用例 8：录制总线并导出 Trace 文件（CANoe 兼容）
 
-7 个用例覆盖了 4 类测试模式：
+```robotframework
+录制总线并导出 Trace 文件（CANoe 兼容）
+    Start Bus Recorder
+    Drain Bus For    2
+    Stop Bus Recorder
+    ${n}=    Recorded Frame Count
+    Should Be True    ${n} > 10    msg=2 秒内应录到多帧周期报文，实际 ${n}
+    ${asc_n}=    Export Bus Trace    ${ROOT}/results/bus_trace.asc
+    ${blf_n}=    Export Bus Trace    ${ROOT}/results/bus_trace.blf
+    Should Be Equal As Integers    ${asc_n}    ${n}
+    Should Be Equal As Integers    ${blf_n}    ${n}
+    Trace Files Should Be Valid
+    ...    ${ROOT}/results/bus_trace.asc    ${ROOT}/results/bus_trace.blf    ${n}
+```
+
+**测什么**：录 2 秒总线 → 导出 **ASC**（Vector 文本格式，可读、可 diff，适合归档）和 **BLF**（Vector 二进制格式，体积小、适合长时间录制）→ **回读校验**两种格式都能被解析、帧数与录制数一致。
+
+**为什么值得单列一个用例**：自动化失败时，光有断言消息不够——"总线上到底发生了什么"才是定位证据。把 Trace 作为失败附件归档（本项目 suite teardown 还会导出 `results/bus_trace_last.asc`），开发可以拿它直接用 CANoe 打开分析时间线。这对应真实 Tier1 交付物里的 **Trace/日志留存要求**，也是"提缺陷必须带证据"的演练。
+
+**真实工作对应**：CANoe 的 Trace 窗口 + "Save as ASC/BLF"；行业惯例 ASC 用于评审/归档、BLF 用于长时录制。对应关键字 `Export Bus Trace` / `Trace Files Should Be Valid`（见 `libraries/VehicleBusLibrary.py`）。
+
+---
+
+## 7.9 本章小结：CAN 信号测试的方法论
+
+8 个用例覆盖了 5 类测试模式：
 
 | 模式 | 用例 | 本质 |
 |---|---|---|
@@ -173,17 +200,42 @@ Suite Teardown   Stop Vehicle Environment
 | **范围/边界** | 用例 2、4、5 | 物理值在不在合理区间 |
 | **一致性/联动** | 用例 3、6 | 信号之间的关系对不对 |
 | **状态** | 用例 7 | 位图/枚举状态对不对 |
+| **可观测性/Trace 归档** | 用例 8 | 失败后留证、可回放、可交给开发分析 |
 
-把这 4 类模式套到任何车载信号上，就是一套完整的信号验证策略。**这也是写测试用例时的通用检查清单**——每加一个信号，问自己：存在性/范围/联动/状态，各有没有用例覆盖？
+把这 5 类模式套到任何车载信号上，就是一套完整的信号验证策略。**这也是写测试用例时的通用检查清单**——每加一个信号，问自己：存在性/范围/联动/状态/可留证，各有没有用例覆盖？
 
 ---
 
-## 7.9 扩展练习（自己动手）
+## 7.10 扩展练习（自己动手）
 
-1. **周期抖动检查**：录 10 秒，统计 0x100 的帧间隔，断言抖动 < 20ms。（提示：用 `Get Recorded Frames` + Python 计算）
-2. **水温升温曲线**：ECU 启动 `--coolant 125`，每 0.5s 读一次水温，记录到达 120℃ 的时间，断言 < 15s。（提示：套件里用 FOR 循环 + `Sleep 0.5s`，收集值到列表）
+1. **周期抖动检查**：**已实现，可直接对照**——`Period And Jitter Should Be Within    0x100    100    period_tolerance_ms=20`（`scenarios/08_bus_health_monitor.robot` 在用；扩展目标是改成 200ms/500ms 再解释"为什么去重窗口是 5ms"）。
+2. **水温升温曲线**：ECU 启动 `--coolant 125`，每 0.5s 读一次水温，记录到达 120℃ 的时间，断言 < 12s（模型约 8s，见 09 章时间线；提示：套件里用 FOR 循环 + `Sleep 0.5s`，收集值到列表）。
 3. **报文长度校验**：扩展库加关键字 `Recorded Frames Should Have DLC 8`，验证 0x100/0x200 都是 8 字节。
 
 ---
 
-**下一章：[08 · UDS 诊断测试实战](08_UDS诊断测试实战.md)**
+## 7.11 本章自检
+
+1. 01 套件的 8 条用例分别验证什么？哪一条最能体现"联动断言"的价值，为什么？
+2. 为什么车速断言用 50~70 的范围，而不是 `Should Be Equal ${speed} 60`？读出两个动态值时容差应该怎么定？
+3. `Wait Until Signal In Range` 与 `Wait Until Keyword Succeeds` 都能"重试"，语义差在哪？为什么库要专门提供前者？
+4. 录制器模式（`Start Bus Recorder` → `Drain Bus For` → `Stop Bus Recorder` → `Recorded Frames Should Contain ID`）验证的是哪一类需求？为什么"录 2 秒再断言"比"收到一帧就断言"更适合周期报文？
+5. 用例 8 把总线导出成 ASC/BLF 并用 `Trace Files Should Be Valid` 回读校验——这一步在真实缺陷处理中解决什么问题？
+6. 如果 ECU 只发 0x100/0x200、不发 0x300，哪条用例会失败？失败信息能直接指向"哪个报文缺失"吗？
+
+---
+
+### 📋 自查要点（答完再对，别提前看）
+
+| # | 自查要点 |
+|---|---|
+| 1 | 8 条 = 3 条周期报文存在性 / 车速范围 / 转速-车速联动 / 水温范围 / 档位随车速 / 里程单调 / 灯位图全 0 / Trace 导出。价值最高的是第 3 条：单看转速在"合理范围"发现不了模型系数写错（×60 还是 ×80），**联动断言**能立刻抓住 |
+| 2 | 车速是**动态量**，且两次读取之间车还在加速（100ms 差约 0.8km/h → 转速差约 64rpm）；精确相等必然 flaky。容差按"物理过程 + 采样间隔"估（本项目给 ±10km/h、转速 ±300rpm），真实系统按规格容差 |
+| 3 | `Wait Until Keyword Succeeds` 只判断"被等待的关键字有没有抛异常"，而 `Read Signal From Bus` 读到什么值都算成功 → 用它等范围是**无效等待**。`Wait Until Signal In Range` 把"值域判断"做进被等待的关键字里，超时仍未进范围才失败 |
+| 4 | 验证"周期报文按设计 ID/周期发送"（总线符合性）。周期报文是持续行为，单帧只能证明"曾经发过一次"；录一个时间窗口再断言能同时覆盖**存在性 + 周期**，也是 CANoe "Trace + 过滤"的等价做法 |
+| 5 | Trace 是失败现场证据：ASC 可读/可 diff、BLF 体积小适合长录；回读校验保证"导出的文件真的能被解析"（不是空文件/格式错），失败时能附给开发用 CANoe 复现时间线 |
+| 6 | 第 1 条（三条周期报文应同时存在）会失败，`Recorded Frames Should Contain ID 0x300` 的失败信息直接指向缺失的 ID——这正是把"哪条报文缺失"编码进断言/关键字的价值 |
+
+---
+
+**上一章：[06 · 环境搭建与项目结构](06_环境搭建与项目结构.md)** ｜ **下一章：[08 · UDS 诊断测试实战](08_UDS诊断测试实战.md)**

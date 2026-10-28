@@ -54,7 +54,7 @@ Suite Teardown   Stop Vehicle Environment
 | **跨系统断言** | 同一个故障在"仪表视角"和"诊断视角"都要能看到 |
 | **场景时序** | 水温爬升（物理惯性）→ 故障确认（2 个诊断周期）→ 点灯，每个环节都有延迟 |
 | **干预与恢复** | 清 DTC 是"干预"，之后验证系统仍能重新检测，说明没被清坏 |
-| **超时设计** | 每个等待的超时值都要有物理依据（25s = 水温爬升 15s + 余量） |
+| **超时设计** | 每个等待的超时值都要有物理依据（25s = 水温 90→120 约 8s + 2 个确认周期 + 余量） |
 
 ---
 
@@ -64,7 +64,7 @@ Suite Teardown   Stop Vehicle Environment
 python -m robot --outputdir results/training training/L6_full_cycle/exercise.robot
 ```
 
-这个套件单跑约 **40 秒**（要等水温爬升和故障确认），别以为卡住了。
+这个套件单跑约 **15~20 秒**（要等水温爬升约 8s + 2 个确认周期，再算环境启动/清理），别以为卡住了。
 
 ---
 
@@ -72,7 +72,7 @@ python -m robot --outputdir results/training training/L6_full_cycle/exercise.rob
 
 - [ ] 四个用例 PASS
 - [ ] 打开 `results/training/log.html`，看第 1 个用例里灯亮的等待过程（几次轮询）
-- [ ] 你能说出"为什么清 DTC 后灯会立即灭，但故障仍在"
+- [ ] 你能说出"为什么清 DTC 后灯会灭（非保持型），但故障仍在、几个周期后又重新确认"
 - [ ] 你能说出每个 timeout 值的来源
 
 ---

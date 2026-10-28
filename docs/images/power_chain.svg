@@ -2,31 +2,31 @@
 <rect width="100%" height="100%" fill="#ffffff"/>
 <text x="40" y="26" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a">一、动力链：汽油怎么变成车轮的转动</text>
 <rect x="140" y="40" width="130" height="56" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
-<text x="205" y="60" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#1f2328" fill="#854F0B">发动机</text>
-<text x="205" y="80" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#854F0B">烧油产生动力</text>
+<text x="205" y="60" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#854F0B">发动机</text>
+<text x="205" y="80" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#854F0B">烧油产生动力</text>
 <rect x="310" y="40" width="130" height="56" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
-<text x="375" y="60" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#1f2328" fill="#854F0B">变速箱</text>
-<text x="375" y="80" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#854F0B">调节力气大小</text>
+<text x="375" y="60" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#854F0B">变速箱</text>
+<text x="375" y="80" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#854F0B">调节力气大小</text>
 <rect x="480" y="40" width="130" height="56" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
-<text x="545" y="60" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#1f2328" fill="#854F0B">车轮</text>
-<text x="545" y="80" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#854F0B">转起来车就走</text>
+<text x="545" y="60" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#854F0B">车轮</text>
+<text x="545" y="80" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#854F0B">转起来车就走</text>
 <line x1="272" y1="68" x2="306" y2="68" stroke="#854F0B" stroke-width="1.5"/>
 <line x1="442" y1="68" x2="476" y2="68" stroke="#854F0B" stroke-width="1.5"/>
 <text x="118" y="68" text-anchor="end" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a">汽油</text>
-<text x="205" y="118" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#185FA5">仪表显示：转速</text>
-<text x="375" y="118" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#185FA5">仪表显示：档位</text>
-<text x="545" y="118" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#185FA5">仪表显示：车速</text>
+<text x="205" y="118" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#185FA5">仪表显示：转速</text>
+<text x="375" y="118" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#185FA5">仪表显示：档位</text>
+<text x="545" y="118" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#185FA5">仪表显示：车速</text>
 <line x1="40" y1="150" x2="640" y2="150" stroke="#d0d7de" stroke-width="0.5"/>
 <text x="40" y="174" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a">二、供电：全车电子设备靠 12V 电运行</text>
 <rect x="140" y="190" width="130" height="56" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
-<text x="205" y="210" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#1f2328" fill="#185FA5">发电机</text>
-<text x="205" y="230" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#185FA5">边开边发电</text>
+<text x="205" y="210" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#185FA5">发电机</text>
+<text x="205" y="230" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#185FA5">边开边发电</text>
 <rect x="310" y="190" width="130" height="56" rx="8" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
-<text x="375" y="210" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#1f2328" fill="#042C53">12V 电网</text>
-<text x="375" y="230" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#042C53">全车供电主干</text>
+<text x="375" y="210" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#042C53">12V 电网</text>
+<text x="375" y="230" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#042C53">全车供电主干</text>
 <rect x="480" y="190" width="130" height="56" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
-<text x="545" y="210" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#1f2328" fill="#185FA5">ECU 屏幕 车灯</text>
-<text x="545" y="230" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#57606a" fill="#185FA5">所有用电设备</text>
+<text x="545" y="210" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="500" fill="#185FA5">ECU 屏幕 车灯</text>
+<text x="545" y="230" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#185FA5">所有用电设备</text>
 <line x1="272" y1="218" x2="306" y2="218" stroke="#185FA5" stroke-width="1.5"/>
 <line x1="442" y1="218" x2="476" y2="218" stroke="#185FA5" stroke-width="1.5"/>
 <rect x="140" y="272" width="130" height="48" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>

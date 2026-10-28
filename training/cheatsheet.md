@@ -11,7 +11,7 @@
 ```robotframework
 *** Settings ***
 Documentation    这个套件干什么的
-Resource         ../../resources/common.resource      # 引入共享关键字
+Resource         ../../resources/common.resource      # 路径相对本 .robot 文件；根目录写 resources/common.resource
 Library          CustomLibrary.py                     # 引入 Python 库
 Suite Setup      Start Vehicle Environment            # 套件级前置
 Suite Teardown   Stop Vehicle Environment             # 套件级收尾
@@ -146,7 +146,7 @@ ${diff}=   Evaluate    abs(float(${x}) - float(${y}))
 
 | 关键字 | 用途 |
 |---|---|
-| `Get Displayed Speed/Rpm/Coolant/Gear/Odometer` | 读仪表显示值 |
+| `Get Displayed Speed/Gear/Coolant/Odometer` | 读仪表显示值（转速请用 `Read Signal From Bus    EngineData    EngineSpeed`） |
 | `Telltale Should Be Lit/Off    灯名    timeout=5` | 断言警告灯亮/灭 |
 | `All Telltales Should Be Lit/Off` | 灯光测试 |
 | `Dashboard Should Be Ready` | 环境就绪 |
@@ -167,6 +167,144 @@ ${diff}=   Evaluate    abs(float(${x}) - float(${y}))
 | `Set Headunit Navi/Media/Hvac State` | 模拟车机操作 |
 | `Broadcast Headunit State To Bus` | 显式广播 IVI 状态到 CAN |
 
+### LIN 总线（LinLibrary，L7 用）
+
+```robotframework
+Suite Setup      Start LIN Simulation
+Suite Teardown   Stop LIN Simulation
+```
+
+| 关键字 | 用途 |
+|---|---|
+| `Start LIN Simulation` / `Stop LIN Simulation` | 起/停 LIN 仿真进程（独立进程，UDP 30001 / TCP 30002） |
+| `Set LIN Slave Signal    0x10    rain_intensity=75` | 设置从机信号，返回 `since_seq` 标记 |
+| `Wait For LIN Frame    0x10    timeout=2    since_seq=${m}` | 等一帧（带 since_seq 只等"操作之后"的新帧） |
+| `LIN Frame Should Contain Signal    帧    rain_intensity    75    tolerance=0.5` | 按 LDF 断言物理值 |
+| `LIN Checksum Should Be Valid    帧` | 独立重算校验和（0x3C 经典 / 其余增强） |
+| `Send LIN Master Request    00 00 00 00 00 00 00 00` | 主请求帧（首字节 0x00=睡眠） |
+| `LIN Bus Should Be Silent    0.3` | 断言接下来 0.3s 总线无帧 |
+| `Wake Up LIN Bus` | 唤醒脉冲（返回 since_seq） |
+| `Get LIN Statistics` | 统计：`sleeping/skipped/emitted/...` |
+| `LIN Schedule Timing Should Be Within    expected_slot_ms=10` | 调度时基/周期/抖动断言 |
+
+### DoIP（DoipLibrary，L8 用）
+
+```robotframework
+Resource         ../../resources/common.resource      # 提供 Start/Stop Vehicle Environment
+Library          ../../libraries/DoipLibrary.py
+Suite Setup      自定义关键字：Start Vehicle Environment + Start DoIP Gateway
+```
+
+| 关键字 | 用途 |
+|---|---|
+| `Start DoIP Gateway` / `Stop DoIP Gateway` | 起/停 DoIP 网关（TCP/UDP 13400） |
+| `DoIP Vehicle Identification` | UDP 车辆识别（0x0001→0x0004），返回 VIN |
+| `DoIP Vehicle Logical Address Should Be    0x0E80` / `DoIP Vehicle EID Should Be    001122334455` | 断言识别响应 |
+| `DoIP Connect` / `DoIP Disconnect` | 建/断 TCP 连接 |
+| `DoIP Routing Activation` | 路由激活（0x0005），返回 code（成功=0x10） |
+| `DoIP Activated Tester Address Should Be` / `DoIP Entity Address Should Be` | 断言激活回显地址 |
+| `DoIP Send Diagnostic    10 03` | 把 UDS 封装进 0x8001 发送 |
+| `DoIP Read ACK` / `DoIP Read Response` | 读 0x8002 确认 / 读 0x8001 UDS 响应 |
+| `DoIP Read VIN` | 经 DoIP 读 VIN（多帧透传） |
+| `DoIP Should Get NACK    0x06    Diagnostic` | 断言 NACK（Generic/Diagnostic） |
+| `DoIP Send Raw Frame    02fd123400000000` | 发原始 DoIP 帧（协议错误用例） |
+
+### 视觉（VisionLibrary，L9 用）
+
+```robotframework
+Library          ../../libraries/VisionLibrary.py
+Library          OperatingSystem
+Suite Setup      Create Directory    ${OUT}
+```
+
+| 关键字 | 用途 |
+|---|---|
+| `Render Cluster State    ${{ {"speed": 60} }}    out.png` | 渲染仪表状态成 PNG（`${{ }}` 是内联表达式→字典） |
+| `Compare With Golden    图    黄金图    tolerance=0.02` | 整图比对，返回差异比例 |
+| `Compare Region With Golden    图    黄金图    x    y    w    h` | 只比对 ROI 区域 |
+| `Image Diff Ratio    A    B` / `Images Should Differ    A    B    min_ratio=0.02` | 差异比例 / 断言确实不同 |
+| `Needle Angle Should Be Near    图    67.5    tolerance=2.0` | 指针角度（车速/240×270°） |
+| `Telltale Region Should Be Lit/Off    图    灯名` | 警告灯区域亮/灭（红色像素占比） |
+| `Get Telltale Region    灯名` | 取区域坐标 `[x,y,w,h]`（不写死魔法数字） |
+| `Save Diff Image` / `Count Red Pixels` | 保存差异图 / 统计红色像素（失败证据） |
+
+### 信息安全（SecurityLibrary，L10 用）
+
+| 关键字 | 用途 |
+|---|---|
+| `Unlock Sequence Should Succeed` | 27 01→27 02 正常解锁，返回 `[seed, key]` |
+| `Request Seed` / `Send Wrong Key For Seed    ${seed}` | 取种子 / 发错误密钥 |
+| `Security Access Should Fail With NRC    0x35` | 断言负响应 NRC |
+| `Bypass Attempt Should Fail` | **漏洞回归**：未请求种子直接发 5A5A5A5A → 必须 NRC 0x24 |
+| `Failed Attempts Should Lock Access` | 连续错误 → NRC 0x36 + 锁定 |
+| `Replay Key Should Fail    ${old_key}` | 重放旧密钥必须失败 |
+| `Fuzz UDS Requests    300` | 模糊测试，返回 `{total, positive, negative, no_response, alive, elapsed_s}` |
+| `Malformed Frame Should Be Rejected    27 02    0x13` | 畸形帧必须回明确 NRC |
+| `ECU Should Stay Alive` | fuzz 后确认 ECU 还活着 |
+| `SecurityLibrary.Response Should Be Positive` | **同名关键字要加库名前缀**（与 DiagnosticLibrary 重名） |
+
+### OTA 刷写（OtaLibrary，L11 用）
+
+```robotframework
+Resource         ../../resources/common.resource      # 提供 Start/Stop Vehicle Environment
+Library          ../../libraries/OtaLibrary.py
+Suite Setup      自定义关键字：Start Vehicle Environment + Start OTA Server
+```
+
+| 关键字 | 用途 |
+|---|---|
+| `Start OTA Server` / `Stop OTA Server` | 起/停 OTA 云端服务（TCP 8080，`OTA_HTTP_PORT` 可覆盖） |
+| `Get OTA Manifest` | 取 manifest（版本/大小/分块/CRC/目标 ECU） |
+| `Download OTA Image` | 分块下载镜像到内存 |
+| `Check Preprogramming Conditions` | 预编程检查 `31 01 0203`（车速=0/电压正常） |
+| `Enter Programming` | 编程会话 + 安全解锁（10 02 + 27） |
+| `Flash OTA Image` | 刷写主链路（0x34/0x36/0x37 + 31 01 FF00 完整性校验） |
+| `ECU Reset` | 复位生效（11 01） |
+| `Read Software Version` / `Software Version Should Be    v1.1.0` | 读/断言 F195 软件版本 |
+| `Inject Bad Image    crc` / `Should Refuse Image` | 注入坏包（crc/size/version）/ 断言被拒绝 |
+| `Should Rollback To Version    v1.0.0` | 失败后旧版本仍可用（回滚） |
+| `Flash With Retry` | 模拟丢块→重试成功（断点续传思想） |
+
+### Appium UI 自动化（AppiumLibrary，L12 用）
+
+```robotframework
+Library          ../../libraries/AppiumLibrary.py
+Suite Setup      Start Appium Server
+Suite Teardown   Stop Appium Server
+```
+
+| 关键字 | 用途 |
+|---|---|
+| `Start Appium Server` / `Stop Appium Server` | 起/停 Appium mock 服务（HTTP 127.0.0.1:4723，`APPIUM_PORT` 可覆盖） |
+| `Create Session` / `Delete Session` | 创建/删除 WebDriver session（capabilities：platformName/deviceName/appPackage/appActivity） |
+| `Find Element    id=...` | 定位元素（id / xpath / accessibility id） |
+| `Element Should Exist` / `Element Should Not Exist` | 元素存在性断言 |
+| `Click Element    ${e}` | 点击元素 |
+| `Get Element Text` / `Element Text Should Be` | 读/断言控件文本 |
+| `Tap Coordinate    x    y` | 坐标点击（actions） |
+| `Get Page Source` / `Page Source Should Contain` | 取控件树 XML / 断言包含包名或界面标识 |
+| `Switch To Package    com.vehicle.navi` | 切换/断言当前界面 |
+| `Get Screenshot    路径.png` | 截图保存（断言非空） |
+
+### 新方向库的运行命令（都在项目根目录）
+
+```bash
+# LIN（起独立 LIN 仿真进程）
+python -m robot --outputdir results/training training/L7_lin_signals/solution.robot
+# DoIP（起 ECU + DoIP 网关，占用 13400）
+python -m robot --outputdir results/training training/L8_doip_diag/solution.robot
+# 视觉（纯离屏渲染，无需 ECU）
+python -m robot --outputdir results/training training/L9_vision_assert/solution.robot
+# 信息安全（起 ECU，fuzz 约十几秒）
+python -m robot --outputdir results/training training/L10_security_fuzz/solution.robot
+# OTA 刷写（起 ECU + OTA server，占用 8080）
+python -m robot --outputdir results/training training/L11_ota_flash/solution.robot
+# Appium UI（起 mock server，占用 4723，无需 ECU）
+python -m robot --outputdir results/training training/L12_appium_ui/solution.robot
+# 只跑全部参考答案自检
+python training/check_all.py --level L12
+```
+
 ### 环境管理（common.resource）
 
 ```robotframework
@@ -182,7 +320,7 @@ Stop Vehicle Environment
 
 ---
 
-## 三、诊断 hex 速查（最常用的 15 条）
+## 三、诊断 hex 速查（最常用的 17 条）
 
 | 操作 | 请求 | 正响应 | 说明 |
 |---|---|---|---|
@@ -258,15 +396,15 @@ Stop Vehicle Environment
 
 ```bash
 # 1. 看详细日志（最关键！）
-python -m robot --outputdir results --loglevel DEBUG training/LX/exercise.robot
+python -m robot --outputdir results --loglevel DEBUG training/L1_first_case/exercise.robot
 # 然后打开 results/log.html，逐关键字展开看参数和返回值
 
 # 2. 手动手动跑一遍（先确认系统行为，再写断言）
 python simulators/ecu_sim.py --speed 60      # 终端1
 python simulators/uds_client.py              # 终端2：手动发 hex 试
 
-# 3. 只跑失败的用例，快速迭代
-python -m robot --test "车速*" training/LX/exercise.robot
+# 3. 只跑失败的用例，快速迭代（把 L1_first_case 换成你当前的练习）
+python -m robot --test "车速*" training/L1_first_case/exercise.robot
 ```
 
 ---

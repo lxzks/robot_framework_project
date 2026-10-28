@@ -27,6 +27,8 @@ ${NORMAL_VOLTAGE}    14
     ${voltage}=    Read Signal From Bus    ClusterData    BatteryVoltage
     Should Be True    ${voltage} < 10.5
     ...    msg=低压激励下总线电压仍为 ${voltage}V（应 <10.5V）
+    # HMI 联动是故障注入的核心卖点之一：P0562 → BatteryLow 灯必须点亮
+    Telltale Should Be Lit    BatteryLow    timeout=10
 
 过压工况应记录电压过高故障
     [Tags]    robustness    REQ-RBX-002

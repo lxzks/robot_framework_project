@@ -89,14 +89,16 @@
 python -m robot --outputdir results/training training/L5_data_driven/exercise.robot
 ```
 
-预期：`2 tests, 6 passed, 0 failed`（2 个用例 × 各 3 组数据 = 报告里 6 条记录）
+预期：`2 tests, 2 passed, 0 failed`
+（2 个 Template 用例，各执行 3 组数据迭代；RF 的统计口径里 Template 用例算 1 条 test，
+数据组在 log.html 里展开成 6 次迭代）
 
 ---
 
 ## 五、自查标准
 
-- [ ] 报告里显示 6 条记录（每个数据组独立统计）
-- [ ] 你故意把一组期望值改错，能看到**只有那一组**失败（定位精准）
+- [ ] log.html 里能看到 2 个 Template 用例、共 6 组数据迭代（每组有独立状态）
+- [ ] 你故意把一组期望值改错，失败信息能精确指向**那一组数据**
 - [ ] 你能说出"什么时候该用 Template、什么时候不该"（提示：逻辑不同就别硬套）
 
 ---

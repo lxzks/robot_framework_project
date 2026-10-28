@@ -6,13 +6,14 @@ coverage_report.py — 测试覆盖率统计
 
 统计三个维度（全部从 RF 的实际执行结果里提取，不是估算）：
 
-    1. **UDS 服务覆盖率**：ECU 实现的服务 vs 测试实际调用的服务
+    1. **UDS 服务覆盖率**：ECU 实现的服务 vs 测试实际调用的服务（Wave2 起 17 个）
     2. **信号覆盖率**：DBC 定义的信号 vs 测试实际读写的信号
     3. **DTC 覆盖率**：故障码目录 vs 测试实际验证过的 DTC
+    4. **OBD 法规服务覆盖**（附加维度，不计入综合分母）：OBD 模式 0x01/0x03/0x04/0x09
 
 原理：解析 results/output.xml（RF 的机器可读结果），遍历所有关键字调用，
 按关键字名/参数归集"用到了什么"。库关键字隐含的服务也有映射表
-（如 Enter Extended Session → 0x10、Request Download → 0x34）。
+（如 Enter Extended Session → 0x10、Request Download → 0x34、IOControl Send → 0x2F）。
 
 用法：
     python -m robot --outputdir results tests/robot/    # 先跑测试
@@ -25,6 +26,16 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+
+
+def _force_utf8_stdio() -> None:
+    """Windows 下 stdout 被重定向时默认 GBK，打印 ✓/✗ 会 UnicodeEncodeError。"""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
+
+_force_utf8_stdio()
 
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT / "simulators"))
@@ -55,6 +66,10 @@ KEYWORD_TO_SID = {
     "Request Transfer Exit": 0x37,
     "Check Programming Integrity": 0x31,
     "Integrity Check Result Should Be": 0x31,
+    # Wave2：进阶 UDS 服务（ObdLibrary 封装）
+    "IOControl Send": 0x2F,
+    "Read Memory By Address": 0x23,
+    "Write Memory By Address": 0x3D,
     "Measure Response Time": None,      # 参数里带请求，单独解析
 }
 
@@ -85,19 +100,35 @@ WRAPPER_KEYWORDS = {
     "Run Keyword And Expect Error": 1,
 }
 
+# OBD-II 法规诊断：关键字 → OBD 模式（与服务 ID 同值，但与 UDS 分开统计）
+OBD_KEYWORD_TO_MODE = {
+    "OBD Read PID": 0x01,
+    "OBD Read RPM": 0x01,
+    "OBD Read Speed": 0x01,
+    "OBD Read Coolant": 0x01,
+    "OBD Read DTCs": 0x03,
+    "OBD Clear DTCs": 0x04,
+    "OBD Read VIN": 0x09,
+}
+
 
 def _record(name: str, args: list[str], used_sids: set, used_signals: set,
-            used_dtcs: set) -> None:
+            used_dtcs: set, used_obd: set) -> None:
     """按一个关键字调用记录覆盖情况"""
     # --- UDS 服务 ---
     if name in KEYWORD_TO_SID and KEYWORD_TO_SID[name] is not None:
         used_sids.add(KEYWORD_TO_SID[name])
-    if name in ("Send UDS Request", "Measure Response Time") and args:
+    if name in ("Send UDS Request", "Measure Response Time",
+                "Send Functional UDS Request", "Send Physical UDS Request") and args:
         hexstr = args[0].replace(" ", "")
         try:
             used_sids.add(int(hexstr[:2], 16))
         except ValueError:
             pass
+
+    # --- OBD-II 模式（法规诊断 0x01/0x03/0x04/0x09） ---
+    if name in OBD_KEYWORD_TO_MODE:
+        used_obd.add(OBD_KEYWORD_TO_MODE[name])
 
     # --- 信号 ---
     if name in SIGNAL_KEYWORDS:
@@ -155,27 +186,30 @@ def collect(output_xml: Path) -> dict:
     used_sids: set[int] = set()
     used_signals: set[str] = set()
     used_dtcs: set[str] = set()
+    used_obd: set[int] = set()
 
-    for suite in result.suite.suites:
-        for kw in iter_all_keywords(suite):
-            # 跳过控制结构节点（IF/FOR/WHILE/TRY 及其分支）——它们不是
-            # 关键字调用，且其 kwname/args 属性在 RF 7 已弃用（会刷警告）
-            if type(kw).__name__ in (
-                    "If", "IfBranch", "For", "ForIteration",
-                    "While", "WhileIteration", "Try", "TryBranch", "Group"):
-                continue
-            name = getattr(kw, "name", "") or getattr(kw, "kwname", "") or ""
-            args = [str(a) for a in getattr(kw, "args", [])]
+    # 必须从**根套件本身**开始遍历：单套件运行（robot tests/robot/12_canfd.robot）
+    # 时用例直接挂在根套件上，只遍历 result.suite.suites 会统计为 0。
+    for kw in iter_all_keywords(result.suite):
+        # 跳过控制结构节点（IF/FOR/WHILE/TRY 及其分支）和 RETURN/ERROR 节点
+        # ——它们不是关键字调用；且访问其 name/kwname/args 在 RF 7 会触发弃用警告
+        if type(kw).__name__ in (
+                "If", "IfBranch", "For", "ForIteration",
+                "While", "WhileIteration", "Try", "TryBranch", "Group",
+                "Return", "Error"):
+            continue
+        name = getattr(kw, "name", "") or getattr(kw, "kwname", "") or ""
+        args = [str(a) for a in getattr(kw, "args", [])]
 
-            # 关键字包装器：把内层调用解开再统计
-            # （如 Run Keyword And Ignore Error → 内层 Send UDS Request）
-            while name in WRAPPER_KEYWORDS:
-                idx = WRAPPER_KEYWORDS[name]
-                if len(args) <= idx:
-                    break
-                name, args = args[idx], args[idx + 1:]
+        # 关键字包装器：把内层调用解开再统计
+        # （如 Run Keyword And Ignore Error → 内层 Send UDS Request）
+        while name in WRAPPER_KEYWORDS:
+            idx = WRAPPER_KEYWORDS[name]
+            if len(args) <= idx:
+                break
+            name, args = args[idx], args[idx + 1:]
 
-            _record(name, args, used_sids, used_signals, used_dtcs)
+        _record(name, args, used_sids, used_signals, used_dtcs, used_obd)
 
     # 全集
     db = cantools.database.load_file(
@@ -191,15 +225,25 @@ def collect(output_xml: Path) -> dict:
         0x14: "ClearDiagnosticInformation",
         0x19: "ReadDTCInformation",
         0x22: "ReadDataByIdentifier",
+        0x23: "ReadMemoryByAddress",
         0x27: "SecurityAccess",
         0x28: "CommunicationControl",
         0x2E: "WriteDataByIdentifier",
+        0x2F: "InputOutputControlByIdentifier",
         0x31: "RoutineControl",
         0x34: "RequestDownload",
         0x36: "TransferData",
         0x37: "RequestTransferExit",
+        0x3D: "WriteMemoryByAddress",
         0x3E: "TesterPresent",
         0x85: "ControlDTCSetting",
+    }
+    # OBD-II 法规诊断模式（与 UDS 分开统计，看是否被 OBD 用例覆盖）
+    implemented_obd = {
+        0x01: "Mode01_CurrentData",
+        0x03: "Mode03_ReadDTC",
+        0x04: "Mode04_ClearDTC",
+        0x09: "Mode09_VehicleInfo",
     }
 
     # 信号名过滤：只保留 DBC 里真实存在的（排除报文名等噪声）
@@ -232,6 +276,11 @@ def collect(output_xml: Path) -> dict:
             "all": all_dtcs,
             "used": used_dtcs & all_dtcs,
             "missing": sorted(all_dtcs - used_dtcs),
+        },
+        "obd": {
+            "implemented": implemented_obd,
+            "covered": sorted(s for s in used_obd if s in implemented_obd),
+            "missing": sorted(s for s in implemented_obd if s not in used_obd),
         },
     }
 
@@ -267,6 +316,15 @@ def print_report(c: dict) -> None:
     for dtc in d["missing"]:
         print(f"   ✗ {dtc}  ← 未覆盖")
 
+    obd = c.get("obd") or {"implemented": {}, "covered": [], "missing": []}
+    print(f"\n[OBD 服务]  {len(obd['covered'])}/{len(obd['implemented'])}  "
+          f"({pct(len(obd['covered']), len(obd['implemented']))})"
+          f"   ← 法规诊断模式，不计入下方综合分母")
+    for mode in obd["covered"]:
+        print(f"   ✓ 0x{mode:02x} {obd['implemented'][mode]}")
+    for mode in obd["missing"]:
+        print(f"   ✗ 0x{mode:02x} {obd['implemented'][mode]}  ← 未覆盖")
+
     total = len(u["implemented"]) + len(s["all"]) + len(d["all"])
     hit = len(u["covered"]) + len(s["used"]) + len(d["used"])
     print(f"\n{'=' * 62}")
@@ -276,6 +334,7 @@ def print_report(c: dict) -> None:
 
 def render_html(c: dict) -> str:
     u, s, d = c["uds"], c["signals"], c["dtcs"]
+    obd = c.get("obd") or {"implemented": {}, "covered": [], "missing": []}
 
     def rows(items, cols):
         return "".join(
@@ -291,6 +350,9 @@ def render_html(c: dict) -> str:
     dtc_rows = rows(
         [(name, "✅ 已覆盖" if name in d["used"] else "❌ 未覆盖")
          for name in sorted(d["all"])], 2)
+    obd_rows = rows(
+        [(f"0x{mode:02X}", name, "✅ 已覆盖" if mode in obd["covered"] else "❌ 未覆盖")
+         for mode, name in sorted(obd["implemented"].items())], 3)
 
     def p(covered, total):
         return f"{covered / total * 100:.1f}%" if total else "n/a"
@@ -312,8 +374,10 @@ th{{color:#8b949e;background:#11161d}}
   <div><b>{p(len(u['covered']), len(u['implemented']))}</b>UDS 服务 {len(u['covered'])}/{len(u['implemented'])}</div>
   <div><b>{p(len(s['used']), len(s['all']))}</b>信号 {len(s['used'])}/{len(s['all'])}</div>
   <div><b>{p(len(d['used']), len(d['all']))}</b>DTC {len(d['used'])}/{len(d['all'])}</div>
+  <div><b>{p(len(obd['covered']), len(obd['implemented']))}</b>OBD 模式 {len(obd['covered'])}/{len(obd['implemented'])}</div>
 </div>
 <h2>UDS 服务覆盖</h2><table><tr><th>SID</th><th>服务</th><th>状态</th></tr>{uds_rows}</table>
+<h2>OBD 法规诊断覆盖</h2><table><tr><th>模式</th><th>服务</th><th>状态</th></tr>{obd_rows}</table>
 <h2>信号覆盖</h2><table><tr><th>信号</th><th>状态</th></tr>{sig_rows}</table>
 <h2>DTC 覆盖</h2><table><tr><th>故障码</th><th>状态</th></tr>{dtc_rows}</table>
 </body></html>"""

@@ -223,6 +223,23 @@ class AdbLibrary:
         _IVI_BACKEND.broadcast_can()
         info("车机 IVI 状态已广播到 CAN（0x400/0x500）")
 
+    @keyword("Close Headunit Backend")
+    def close_headunit_backend(self) -> None:
+        """关闭模块级 IVI 广播器持有的虚拟总线（套件结束时调用）。
+
+        为什么需要：`Broadcast Headunit State To Bus` 会懒加载一个进程级单例
+        `IviBackend`，它持有一个 VirtualCanBus。过去从不释放 → 测试进程结束
+        时报 "UdpMulticastBus was not properly shut down"（句柄泄漏）。
+        """
+        global _IVI_BACKEND
+        if _IVI_BACKEND is None:
+            return
+        try:
+            _IVI_BACKEND.shutdown()
+            info("车机 IVI 广播器总线已释放")
+        finally:
+            _IVI_BACKEND = None
+
 
 # 模块级单例：RF 进程内的 IVI 广播器（lazy 初始化）
 _IVI_BACKEND = None

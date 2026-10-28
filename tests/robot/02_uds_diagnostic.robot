@@ -63,6 +63,10 @@ Suite Teardown   Stop Vehicle Environment
 读取未知服务应返回 serviceNotSupported
     [Tags]    REQ-DIAG-015
     [Documentation]    A0 不存在 → NRC 0x11
+    ...              注意：必须显式进扩展会话 —— 默认会话下任何未支持服务
+    ...              先报 0x7F（当前会话不支持），断言 0x11 会挂。
+    ...              这样本用例可以单独运行（不依赖前一条用例留下的会话状态）。
+    Enter Extended Session
     ${resp}=    Send UDS Request    A0
     Response Should Be Negative With NRC    0x11
 

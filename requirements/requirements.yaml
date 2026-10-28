@@ -23,7 +23,7 @@
 # =============================================================================
 
 project: Instrument Cluster & Cockpit System（仿真座舱）
-revision: "v1.0 / 2026-10"
+revision: "v1.3 / 2026-10-28（扩展篇 Wave3：新增 OTA/Bootloader / ODX-OTX / Appium / HIL 能力域）"
 
 requirements:
 
@@ -539,3 +539,507 @@ requirements:
     priority: Medium
     method: Test
     verify: 睡眠后录制 N 秒，断言零帧
+
+  # ---------------------------------------------------------------- LIN 车身总线（扩展篇 23 章）
+  - id: REQ-LIN-001
+    title: LIN 调度表周期与时序
+    description: LIN 主节点按 10ms 槽位轮询调度表（4 槽 → 每个报文 40ms 周期），相邻帧间隔 10ms 且抖动在容差内
+    source: LDF-SCH-1.1
+    priority: High
+    method: Test
+    verify: 录制 LIN 帧序列，断言相邻帧间隔 10ms 与调度表一致、同报文相邻帧 40ms
+
+  - id: REQ-LIN-002
+    title: LIN 从节点信号响应
+    description: 主节点请求某从节点报文时，从节点应在响应槽内返回最新信号值（雨量/雨刷/座椅）
+    source: LDF-SIG-2.1
+    priority: High
+    method: Test
+    verify: 设置从节点信号后，断言下一轮调度帧中信号值更新
+
+  - id: REQ-LIN-003
+    title: LIN 校验和正确性
+    description: 主请求报文使用经典校验和、其余报文使用增强校验和（含 PID），校验错误的帧应被识别
+    source: LIN2.2-4.2
+    priority: High
+    method: Test
+    verify: 正常帧校验通过；注入校验错误后校验失败被识别
+
+  - id: REQ-LIN-004
+    title: LIN 睡眠与唤醒
+    description: 主节点发送 goto-sleep 主请求后总线应静默；发送唤醒（wakeup pulse）后调度恢复
+    source: LIN2.2-5.3
+    priority: High
+    method: Test
+    verify: 睡眠命令后断言无帧；唤醒后断言帧恢复
+
+  - id: REQ-LIN-005
+    title: LIN 错误帧容错
+    description: 从节点无响应/校验错误/同步错误时，主节点应记录错误并继续调度，不阻塞后续报文
+    source: LIN2.2-6.1
+    priority: Medium
+    method: Test
+    verify: 注入无响应错误后，断言后续调度仍然继续且错误被计数
+
+  # ---------------------------------------------------------------- 车载以太网 DoIP（扩展篇 24 章）
+  - id: REQ-DOIP-001
+    title: DoIP 车辆识别与公告
+    description: 网关应能通过 UDP 车辆识别请求返回 VIN、逻辑地址、EID/GID 与 further action
+    source: ISO13400-2-7.1
+    priority: High
+    method: Test
+    verify: 发车辆识别请求，断言响应 VIN 为 17 字节且与 ECU 一致
+
+  - id: REQ-DOIP-002
+    title: DoIP 路由激活
+    description: Tester 应通过路由激活请求建立诊断通道，成功响应 code=0x10
+    source: ISO13400-2-7.1.3
+    priority: High
+    method: Test
+    verify: 发路由激活请求，断言响应 code=0x10 且 tester 地址回显
+
+  - id: REQ-DOIP-003
+    title: DoIP 诊断报文透传
+    description: 路由激活后，DoIP 诊断报文应被网关透传到 CAN 上的 ECU，并把 UDS 响应透传回 Tester
+    source: ISO13400-2-7.2
+    priority: High
+    method: Test
+    verify: 经 DoIP 发 UDS 请求（会话控制/读 VIN），断言 UDS 响应一致
+
+  - id: REQ-DOIP-004
+    title: DoIP 协议错误处理
+    description: 非法协议版本/未知 payload type/长度不符/未激活路由发诊断时，网关应回 NACK 或关闭连接
+    source: ISO13400-2-8.2
+    priority: Medium
+    method: Test
+    verify: 逐项注入协议错误，断言返回 NACK 码或连接被关闭
+
+  - id: REQ-DOIP-005
+    title: DoIP 连接保活
+    description: 诊断通道应支持 alive check 请求/响应；断开重连后重新路由激活可继续诊断
+    source: ISO13400-2-7.3
+    priority: Medium
+    method: Test
+    verify: alive check 往返正常；断开重连后重激活并再跑一条 UDS 请求
+
+  # ---------------------------------------------------------------- HMI 视觉自动化（扩展篇 25 章）
+  - id: REQ-VIS-001
+    title: 仪表画面基准比对
+    description: 相同显示状态渲染出的仪表画面应与基准图一致（差异比例在容差内）
+    source: HMI-SPEC-7.1
+    priority: High
+    method: Test
+    verify: 渲染默认/典型状态，与 golden 图比对并断言差异比例低于阈值
+
+  - id: REQ-VIS-002
+    title: 指针角度与车速一致
+    description: 车速表的指针角度应与车速成线性映射（0~240 km/h 对应 0~270°），误差 ≤2°
+    source: HMI-SPEC-7.2
+    priority: High
+    method: Test
+    verify: 渲染不同车速，识别指针角度并与期望角度比较
+
+  - id: REQ-VIS-003
+    title: 警告灯区域识别
+    description: 警告灯点亮时对应区域应出现告警色；熄灭时该区域应为暗色
+    source: HMI-SPEC-7.3
+    priority: High
+    method: Test
+    verify: 分别渲染灯亮/灯灭状态，断言对应区域的告警色占比阈值
+
+  - id: REQ-VIS-004
+    title: 视觉变化检测灵敏度
+    description: 显示状态变化（车速/灯态）后画面必须产生可被检测的差异，防止比对恒真
+    source: HMI-SPEC-7.4
+    priority: Medium
+    method: Test
+    verify: 用变异状态与基准比对，断言比对失败（差异超阈值）
+
+  # ---------------------------------------------------------------- 非功能（扩展篇 26 章）
+  - id: REQ-PERF-001
+    title: 诊断响应时间符合 P2
+    description: 诊断请求（TesterPresent/读 DID）的响应时间应满足声明的 P2=50ms，且多次采样 p95 稳定
+    source: PERF-SPEC-1.1
+    priority: High
+    method: Test
+    verify: 采样 9 次统计 min/avg/max/p95，断言 p95 ≤ 50ms
+
+  - id: REQ-PERF-002
+    title: 默认工况总线负载率
+    description: 默认工况（3 条周期报文 + 诊断空闲）下总线负载率应低于 30%，为诊断/刷写留余量
+    source: PERF-SPEC-1.2
+    priority: Medium
+    method: Test
+    verify: 录制 2s 按 500kbps 估算负载率，断言低于阈值并记录基线
+
+  - id: REQ-PERF-003
+    title: 突发压力下诊断吞吐
+    description: 连续 200 条诊断请求的吞吐应 ≥ 50 条/s、成功率 100%，压力后 ECU 仍可正常响应
+    source: PERF-SPEC-2.1
+    priority: High
+    method: Test
+    verify: 突发发送并统计成功率/吞吐，之后断言 ECU Should Respond
+
+  - id: REQ-PERF-004
+    title: 长稳与周期抖动
+    description: 长稳运行期间周期报文不应丢帧、间隔抖动在容差内，诊断链路保持可用
+    source: PERF-SPEC-3.1
+    priority: Medium
+    method: Test
+    verify: 20s soak 采样，统计丢帧/超时与间隔抖动并断言阈值
+
+  # ---------------------------------------------------------------- 信息安全（扩展篇 27 章）
+  - id: REQ-SEC-001
+    title: 安全访问种子-密钥流程
+    description: 安全访问必须遵循 27 01 取种子 → 27 02 送密钥的顺序，正常流程解锁成功，写 DID 等受保护服务才放行
+    source: SEC-SPEC-1.1
+    priority: High
+    method: Test
+    verify: 正常解锁后写 DID 成功；未解锁写 DID 回 NRC 0x33
+
+  - id: REQ-SEC-002
+    title: 种子随机性与重放防护
+    description: 每次 27 01 应返回不同随机种子，密钥一次性有效；重放历史密钥必须被拒绝
+    source: SEC-SPEC-1.2
+    priority: High
+    method: Test
+    verify: 两次种子不同；用旧密钥重放回 NRC 0x35
+
+  - id: REQ-SEC-003
+    title: 爆破防护与锁定
+    description: 连续 3 次密钥错误后，安全访问应返回 NRC 0x36 exceedNumberOfAttempts 并锁定一段时间
+    source: SEC-SPEC-1.3
+    priority: High
+    method: Test
+    verify: 连续错误密钥后断言 NRC 0x36；等待期后恢复
+
+  - id: REQ-SEC-004
+    title: 模糊测试健壮性
+    description: 注入随机/半随机 UDS 请求与畸形帧后，ECU 不得崩溃或永久失联，必须返回 NRC 或正响应
+    source: SEC-SPEC-2.1
+    priority: High
+    method: Test
+    verify: 300 条模糊请求后 ECU 仍在线且可完成正常诊断
+
+  - id: REQ-SEC-005
+    title: 协议畸形帧处理
+    description: 非法子功能/超长/截断的 UDS 请求应返回 NRC 0x12 或 0x13，而不是无响应或进程异常
+    source: SEC-SPEC-2.2
+    priority: Medium
+    method: Test
+    verify: 逐类畸形帧断言对应 NRC 且后续诊断可恢复
+
+  # ---------------------------------------------------------------- CAN FD（扩展篇 29 章）
+  - id: REQ-CANFD-001
+    title: CAN FD 64 字节报文收发
+    description: CAN FD 节点应能收发最长 64 字节数据段的报文，内容与序列完整
+    source: CANFD-SPEC-1.1
+    priority: High
+    method: Test
+    verify: 发送/接收 64 字节 FD 帧，断言数据长度与内容一致、序列连续
+
+  - id: REQ-CANFD-002
+    title: CAN FD DLC 映射
+    description: DLC 0~15 应按 CAN FD 规则映射为 0,1,2,3,4,5,6,7,8,12,16,20,24,32,48,64 字节
+    source: CANFD-SPEC-1.2
+    priority: High
+    method: Test
+    verify: 逐项验证 DLC 与数据长度映射表
+
+  - id: REQ-CANFD-003
+    title: CAN FD BRS/ESI 标志
+    description: BRS（位速率切换）与 ESI（错误状态指示）标志应正确置位并透传给接收端
+    source: CANFD-SPEC-1.3
+    priority: Medium
+    method: Test
+    verify: 发送带 BRS/ESI 的帧，断言接收端标志一致
+
+  - id: REQ-CANFD-004
+    title: CAN FD 信号解码与错误处理
+    description: FD 报文中的 float32/uint16/位图信号应正确解码；长度/CRC 异常帧应被识别拒绝
+    source: CANFD-SPEC-2.1
+    priority: High
+    method: Test
+    verify: 解码已知值引擎数据断言精度；注入错误帧断言被拒绝
+
+  # ---------------------------------------------------------------- SOME/IP（扩展篇 30 章）
+  - id: REQ-SOMEIP-001
+    title: SOME/IP 服务发现
+    description: 服务端应通过 OfferService 公告，测试端 FindService 应能发现服务与端点信息
+    source: SOMEIP-SPEC-1.1
+    priority: High
+    method: Test
+    verify: 发 SD Find，断言收到 Offer 且 service/instance/endpoint 正确
+
+  - id: REQ-SOMEIP-002
+    title: SOME/IP 方法调用
+    description: REQUEST/RESPONSE 方法调用应返回正确 payload 与 return code=0x00，参数序列化一致
+    source: SOMEIP-SPEC-2.1
+    priority: High
+    method: Test
+    verify: 调用 GetSpeed/SetSpeedLimit，断言响应值与 return code
+
+  - id: REQ-SOMEIP-003
+    title: SOME/IP 事件订阅与通知
+    description: 订阅 eventgroup 后应收到周期 NOTIFICATION，数值与数据源一致
+    source: SOMEIP-SPEC-2.2
+    priority: High
+    method: Test
+    verify: 订阅 SpeedChanged 事件，断言通知周期与数值
+
+  - id: REQ-SOMEIP-004
+    title: SOME/IP 协议错误处理
+    description: 未知 service/method、版本不匹配、长度不符时应返回对应错误码且服务不崩溃
+    source: SOMEIP-SPEC-3.1
+    priority: Medium
+    method: Test
+    verify: 逐类注入错误请求，断言 return code 与后续可用性
+
+  # ---------------------------------------------------------------- 诊断进阶：功能寻址/OBD（扩展篇 31 章）
+  - id: REQ-DIAG-017
+    title: 功能寻址诊断
+    description: ECU 应响应 0x7DF 功能寻址请求（群发），响应仍从 0x7E8 物理响应 ID 返回
+    source: ISO14229-1-10.2
+    priority: High
+    method: Test
+    verify: 向 0x7DF 发 TesterPresent/读 DID，断言 0x7E8 响应
+
+  - id: REQ-DIAG-018
+    title: 0x2F 执行器控制
+    description: 0x2F InputOutputControl 应支持 returnControlToECU/resetToDefault/shortTermAdjustment，受会话与安全访问保护
+    source: ISO14229-1-10.7
+    priority: High
+    method: Test
+    verify: 0x2F 点亮指定警告灯并断言；默认会话请求被 NRC 拒绝
+
+  - id: REQ-DIAG-019
+    title: 0x23/0x3D 内存读写
+    description: 0x23 ReadMemoryByAddress 应可读教学内存区，0x3D 写入后可读回；越界应回 NRC 0x31
+    source: ISO14229-1-10.9
+    priority: Medium
+    method: Test
+    verify: 读/写/读回一致；越界地址断言 NRC 0x31
+
+  - id: REQ-DIAG-020
+    title: OBD 实时数据（Mode 01）
+    description: OBD mode 01 应返回 RPM/车速/水温等 PID，换算符合 ISO 15031（rpm=(A*256+B)/4 等）
+    source: ISO15031-5-6.3
+    priority: High
+    method: Test
+    verify: 读 PID 0x0C/0x0D/0x05，断言换算值与 ECU 当前状态一致
+
+  - id: REQ-DIAG-021
+    title: OBD DTC 读取与清除（Mode 03/04）
+    description: OBD mode 03 应返回已确认 DTC 列表，mode 04 应清除 DTC
+    source: ISO15031-5-6.5
+    priority: Medium
+    method: Test
+    verify: 制造故障→mode03 含该 DTC→mode04→mode03 为空
+
+  - id: REQ-DIAG-022
+    title: OBD VIN 读取（Mode 09）
+    description: OBD mode 09 PID 0x02 应返回 17 字节 VIN
+    source: ISO15031-5-6.9
+    priority: Medium
+    method: Test
+    verify: 读 mode09 PID02，断言 VIN 与 22 F1 90 一致
+
+  # ---------------------------------------------------------------- 功能安全机制（扩展篇 32 章）
+  - id: REQ-SAFE-001
+    title: E2E 保护 CRC 校验
+    description: 带 E2E Profile 1 保护的安全报文，CRC 错误应被接收端拒绝且计入错误计数
+    source: E2E-SPEC-1.1
+    priority: High
+    method: Test
+    verify: 注入 CRC 错误帧，断言拒绝 + 错误计数递增
+
+  - id: REQ-SAFE-002
+    title: E2E 计数器与重放防护
+    description: E2E 计数器应按 0~14 循环递增，跳变/重复帧应被识别为通信错误
+    source: E2E-SPEC-1.2
+    priority: High
+    method: Test
+    verify: 断言计数器递增；注入跳变/重复帧被拒绝
+
+  - id: REQ-SAFE-003
+    title: 看门狗与降级
+    description: 心跳停止超过 300ms 时安全节点应进入 SAFE_STATE 并上报故障；恢复心跳后自动恢复
+    source: SAFETY-SPEC-2.1
+    priority: High
+    method: Test
+    verify: 停止心跳注入，断言 SAFE_STATE + fault_level；恢复后回到 NORMAL
+
+  - id: REQ-SAFE-004
+    title: 安全状态与恢复
+    description: 连续 E2E 错误达阈值时应进入 DEGRADED 并输出安全值；故障消除后应恢复 NORMAL
+    source: SAFETY-SPEC-2.2
+    priority: High
+    method: Test
+    verify: 连续 3 次错误→DEGRADED+安全值；清除后恢复
+
+  - id: REQ-SAFE-005
+    title: 安全机制独立验证
+    description: 测试端应独立实现 CRC 重算与状态判定，避免复用被测实现导致"自证"
+    source: SAFETY-SPEC-3.1
+    priority: Medium
+    method: Test
+    verify: 测试端独立 CRC 交叉验证合法/非法帧
+
+  # ---------------------------------------------------------------- Trace 分析（扩展篇 34 章）
+  - id: REQ-TRACE-001
+    title: ASC/BLF Trace 解析
+    description: 应能解析 Vector ASC 与 BLF 两种 Trace 格式，提取帧时间戳/ID/方向/数据
+    source: TRACE-SPEC-1.1
+    priority: High
+    method: Test
+    verify: 解析项目导出的 ASC 与生成的 BLF，断言帧数/ID 集合与录制一致
+
+  - id: REQ-TRACE-002
+    title: 总线负载计算
+    description: 应从 Trace 计算总线负载率（按 500kbps 与帧 bit 数估算），结果与理论值一致
+    source: TRACE-SPEC-1.2
+    priority: Medium
+    method: Test
+    verify: 分析 2s 录制，断言负载率区间合理且与帧率换算一致
+
+  - id: REQ-TRACE-003
+    title: 周期抖动与异常检测
+    description: 应从 Trace 检测丢帧/间隔异常/未知 ID，并可用于失败现场取证
+    source: TRACE-SPEC-2.1
+    priority: High
+    method: Test
+    verify: 构造缺帧 Trace 断言被检测；正常 Trace 无异常；导出分析报告
+
+  # ---------------------------------------------------------------- OTA / Bootloader（扩展篇 35 章）
+  - id: REQ-OTA-001
+    title: OTA 包清单与预编程条件
+    description: OTA 客户端应能获取固件包清单（版本/大小/CRC），刷写前必须通过预编程条件检查（车速=0、电压正常、依赖检查）
+    source: OTA-SPEC-1.1
+    priority: High
+    method: Test
+    verify: 获取 manifest 并校验；31 01 0203 在车速非 0 时返回 NRC
+
+  - id: REQ-OTA-002
+    title: OTA 刷写主链路
+    description: 应通过 0x34/0x36/0x37 + 0x31 01 FF00 完成完整固件下载与完整性校验
+    source: OTA-SPEC-1.2
+    priority: High
+    method: Test
+    verify: 下载→分块传输→退出→完整性校验 00，版本号更新
+
+  - id: REQ-OTA-003
+    title: 版本管理与复位生效
+    description: 刷写成功后 ECU 复位应切换到新版本（DID F195），刷写失败应保持旧版本
+    source: OTA-SPEC-2.1
+    priority: High
+    method: Test
+    verify: 22 F195 前后版本对比；11 01 复位后读取
+
+  - id: REQ-OTA-004
+    title: 坏包与兼容性拒绝
+    description: CRC 错/大小不符/版本不兼容的 OTA 包必须被拒绝，且不得破坏当前运行版本
+    source: OTA-SPEC-2.2
+    priority: High
+    method: Test
+    verify: 逐类注入坏包，断言被拒且版本保持
+
+  - id: REQ-OTA-005
+    title: 断点续传与回滚
+    description: 刷写中断/失败后应能回滚到旧版本，并支持从断点重传继续
+    source: OTA-SPEC-3.1
+    priority: Medium
+    method: Test
+    verify: 模拟中断→回滚旧版本可用；重传失败块后刷写成功
+
+  # ---------------------------------------------------------------- ODX / OTX 数据库驱动（扩展篇 36 章）
+  - id: REQ-DIAG-023
+    title: ODX 诊断数据库解析
+    description: 应能解析 ODX 子集（DID/DTC/服务/Comparam），并校验结构完整性
+    source: ISO22901-1
+    priority: High
+    method: Test
+    verify: 加载 ODX 断言 DID/DTC/SID/Comparam 完整且与 ECU 一致
+
+  - id: REQ-DIAG-024
+    title: 数据库驱动请求与响应
+    description: 测试请求/响应解码应由 ODX 定义驱动（按名称生成请求、按定义解码响应），而非手写 hex
+    source: ISO22901-1
+    priority: High
+    method: Test
+    verify: 按名称读 DID 解码；按名称生成清 DTC 请求并执行成功
+
+  - id: REQ-DIAG-025
+    title: OTX 测试序列执行
+    description: 应能执行 OTX 教学子集定义的测试序列，步骤失败时定位到具体步骤
+    source: ISO13209-1
+    priority: High
+    method: Test
+    verify: 正常序列通过；坏期望序列在指定步骤失败并给出步骤名
+
+  # ---------------------------------------------------------------- Appium 真机 UI（扩展篇 37 章）
+  - id: REQ-APPIUM-001
+    title: Appium 会话与能力管理
+    description: 应能通过 W3C capabilities 创建/删除 sessions，capabilities 与目标车机一致
+    source: W3C-WebDriver
+    priority: High
+    method: Test
+    verify: POST /session 成功返回 sessionId；DELETE 后不可用
+
+  - id: REQ-APPIUM-002
+    title: 元素查找与定位
+    description: 应支持 resource-id/accessibility id/xpath 定位元素，并断言存在/不存在
+    source: W3C-WebDriver
+    priority: High
+    method: Test
+    verify: 逐种定位策略查找；不存在的元素断言失败
+
+  - id: REQ-APPIUM-003
+    title: 点击/文本/截图操作
+    description: 应支持点击、读取文本、截图并保存 PNG；操作结果应反映到车机状态/页面
+    source: W3C-WebDriver
+    priority: High
+    method: Test
+    verify: 点击后页面/焦点变化；文本断言；截图非空
+
+  - id: REQ-APPIUM-004
+    title: 页面源码与界面切换
+    description: 应能获取页面源码并断言当前包/Activity/界面元素，支持界面切换验证
+    source: W3C-WebDriver
+    priority: Medium
+    method: Test
+    verify: source 含包名/activity；点击导航后 source 含导航界面
+
+  # ---------------------------------------------------------------- HIL 台架（扩展篇 38 章）
+  - id: REQ-HIL-001
+    title: 上下电时序
+    description: 台架应能模拟 KL30 先于 KL15 的上电时序，以及 KL15 OFF→KL30 OFF 下电时序
+    source: HIL-SPEC-1.1
+    priority: High
+    method: Test
+    verify: 上电/下电序列执行后读回状态断言顺序与时序
+
+  - id: REQ-HIL-002
+    title: 电压控制与故障注入
+    description: 台架应能设定 KL30 电压（默认 12.6V）并注入欠压 9V/过压 16V/掉电
+    source: HIL-SPEC-1.2
+    priority: High
+    method: Test
+    verify: 设定/注入后读回电压一致；掉电回 0V
+
+  - id: REQ-HIL-003
+    title: IO/继电器控制
+    description: 台架应支持 DI 激励与 DO/继电器回读，控制 ECU 供电通断（Power Cycle）
+    source: HIL-SPEC-2.1
+    priority: High
+    method: Test
+    verify: DI 设置后可读；DO/继电器回读一致；Power Cycle 后恢复
+
+  - id: REQ-HIL-004
+    title: 后端抽象与真实台架替换点
+    description: HIL 访问应通过后端抽象（sim/real），切换到 real 时给出明确提示，便于接真实台架
+    source: HIL-SPEC-3.1
+    priority: Medium
+    method: Test
+    verify: HIL_BACKEND=real 时给出"需接真实台架"错误；sim 后端全绿
+
+

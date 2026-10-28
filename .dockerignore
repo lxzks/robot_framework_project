@@ -1,0 +1,37 @@
+# Docker build 上下文排除项（镜像只需要"源码 + 依赖清单 + 测试资源"）
+
+# 版本控制 / 审计 / AI 工具目录
+.git
+.gitignore
+.audit
+.workbuddy
+.qwen
+.vscode
+
+# 本地虚拟环境（镜像里用 pip 重装，避免把 Windows/Linux 解释器混进镜像）
+.venv
+venv
+envs
+
+# 运行产物（每次跑测试重新生成）
+results
+output.xml
+
+# Python 缓存 / 临时文件
+__pycache__
+*.pyc
+*.pyo
+*.tmp
+
+# 运行时状态与日志（仿真进程生成）
+simulators/*.log
+simulators/*.pid
+simulators/*_state.json
+
+# 本地 IDE / OS 杂物
+.idea
+.DS_Store
+Thumbs.db
+
+# 不必要进镜像的 CI 目录（Dockerfile 本身仍会被 COPY，但 .github 无需进镜像）
+.github

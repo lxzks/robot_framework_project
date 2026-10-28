@@ -16,7 +16,10 @@ cluster_gui.py — 多界面座舱仪表盘（Instrument Cluster GUI）
     4 Phone 电话     5 Settings 设置  6 VehicleInfo 车辆信息
 
 运行：
-    python dashboard.py          # GUI 模式（不带 --headless）
+    python dashboard.py              # 推荐：GUI 模式（dashboard.py 内部转发到本模块）
+    python start_cockpit.py          # 一键起 ECU + 仪表 + 车机（最省事）
+    python simulators/cluster_gui.py # 独立预览：直接起本界面（无 ECU 时界面静止；
+                                     # 另开终端跑 ecu_sim.py 后指针/灯会实时联动）
 """
 
 from __future__ import annotations
@@ -911,3 +914,46 @@ def run_cluster_gui(bus, display: ClusterDisplay, db) -> None:
 
     exit_code = app.exec()
     sys.exit(exit_code)
+
+
+def run_standalone_preview(dbc_path: str | None = None) -> None:
+    """独立预览模式：直接启动座舱界面（支持 `python simulators/cluster_gui.py`）。
+
+    平时推荐用 `dashboard.py` 或 `start_cockpit.py` 启动（它们会同时拉起 ECU，
+    界面数据实时联动）。本入口用于"只想看看界面"或没起 ECU 的场合：
+
+    - 没有 ECU 时：界面显示默认值（启动画面 → 主页），指针/灯不会动；
+    - 另开终端跑 `python simulators/ecu_sim.py` 后：虚拟 CAN 广播会被本界面
+      收到，指针/警告灯会实时联动（同一份 ClusterDisplay 模型）。
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="多界面座舱仪表（独立预览模式）")
+    parser.add_argument(
+        "--dbc", default=None,
+        help="整车 DBC 路径（默认 simulators/dbc/vehicle.dbc）")
+    args = parser.parse_args()
+
+    import cantools
+    from bus import VirtualCanBus
+
+    dbc = Path(dbc_path or args.dbc or
+               Path(__file__).parent / "dbc" / "vehicle.dbc")
+    if not dbc.exists():
+        raise SystemExit(f"[cluster_gui] 找不到 DBC: {dbc}")
+    db = cantools.database.load_file(str(dbc))
+    display = ClusterDisplay()
+
+    print("[cluster_gui] 独立预览模式：界面已启动（Ctrl+C 或关窗口退出）。")
+    print("[cluster_gui] 提示：另开终端运行 `python simulators/ecu_sim.py`，"
+          "指针/警告灯才会实时动起来。")
+    print("[cluster_gui] 日常演示推荐：`python start_cockpit.py`"
+          "（一条命令起 ECU + 仪表 + 车机）。", flush=True)
+
+    with VirtualCanBus("CLUSTER-PREVIEW") as bus:
+        run_cluster_gui(bus, display, db)
+
+
+if __name__ == "__main__":
+    run_standalone_preview()

@@ -11,6 +11,11 @@ Variables        env_vars.py
 Library          ../libraries/VehicleBusLibrary.py
 Library          ../libraries/DiagnosticLibrary.py
 Library          ../libraries/DashboardLibrary.py
+# AdbLibrary 在这里统一导入（而不是只让 04/05 套件各自导入）：
+# Teardown 要调用它的 Close Headunit Backend 释放模块级总线单例，
+# 若某些套件没导入，robot --dryrun 会报 "No keyword with name ... found"
+# （运行时虽然被 Run Keyword And Ignore Error 兜住，但 dry-run 语义校验会挂）。
+Library          ../libraries/AdbLibrary.py
 
 *** Variables ***
 # 注意：${CURDIR} 是"本资源文件所在目录"（<root>/resources/），
@@ -71,6 +76,10 @@ Stop Vehicle Environment
     ...    Export Bus Trace    ${ROOT}/results/bus_trace_last.asc
     Run Keyword And Ignore Error    Close CAN Bus
     Run Keyword And Ignore Error    Close Diagnostic Tester
+    # 车机 IVI 广播器的模块级单例总线（AdbLibrary 懒加载）也要释放，否则
+    # 进程结束时报 "UdpMulticastBus was not properly shut down"（句柄泄漏）。
+    # AdbLibrary 已在 Settings 里统一导入，关键字一定存在；没建过单例时它直接返回。
+    Close Headunit Backend
     # 测试隔离：清掉车机状态文件，下一个套件从全新状态开始
     # （否则 04 套件"卸载 navi"的残留会让 05 套件的 am start 失败）
     Run Keyword And Ignore Error    Remove File    ${ADB_STATE}

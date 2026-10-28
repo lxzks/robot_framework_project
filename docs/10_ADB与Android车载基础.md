@@ -30,14 +30,16 @@ ADB（Android Debug Bridge）是安卓的**通用命令行接口**，C/S 架构�
 
 ---
 
-## 10.2 adb 命令族速查（本项目 adb_sim 全部实现）
+## 10.2 adb 命令族速查（本项目 adb_sim 实现子集）
+
+> 说明：下表是真实 adb 的常用命令族，**`adb_sim.py` 只实现了本项目用例所需的子集**——学习时请把"概念"和"本项目能跑的命令"分开看。文末有覆盖边界清单。
 
 ### 10.2.1 设备管理
 
 ```bash
 adb devices                      # 列出在线设备（serial + 状态）
-adb connect 192.168.1.100:5555   # 网络连接（真机）
-adb -s <serial> shell ...        # 多设备时指定目标
+adb connect 192.168.1.100:5555   # 网络连接（真机用；adb_sim 未实现）
+adb -s <serial> shell ...        # 多设备时指定目标（adb_sim 未实现）
 ```
 
 `devices` 输出：
@@ -73,7 +75,7 @@ adb shell getprop                          # 全部属性
 adb install app.apk               # 安装
 adb install -r app.apk            # 覆盖安装（保留数据，测试可重复的关键）
 adb uninstall com.example.app     # 卸载
-adb shell pm list packages         # 已装应用列表
+adb shell pm list packages         # 已装应用列表（adb_sim 未实现；可用 getprop 读机型/版本代替）
 adb shell am start -n com.vehicle.navi/.MapActivity   # 启动 Activity
 adb shell am force-stop com.vehicle.navi              # 强杀
 adb shell am broadcast -a ACTION ...                  # 发广播（模拟按键/意图）
@@ -99,8 +101,8 @@ adb shell input text "hello"      # 输入文本
 ```bash
 adb shell dumpsys battery         # 电量/温度/充电状态
 adb shell dumpsys window          # 当前前台窗口（验证界面跳转！）
-adb shell dumpsys activity top    # 当前 Activity 栈
-adb shell dumpsys power           # 屏幕亮灭/唤醒状态
+adb shell dumpsys activity top    # 当前 Activity 栈（adb_sim 桩：只回 DUMP OF SERVICE 标题）
+adb shell dumpsys power           # 屏幕亮灭/唤醒状态（adb_sim 桩）
 ```
 
 `dumpsys window` 输出里的 `mCurrentFocus=Window{com.vehicle.navi/.MapActivity}` —— **这就是"当前在哪个界面"的权威答案**。04 套件的 `Current Focus Should Contain` 关键字解析它做断言——比图像识别稳定一万倍。
@@ -116,6 +118,8 @@ adb logcat *:E                    # 只看 Error 以上
 ```
 
 **logcat 是安卓排故的 80%**：崩溃栈、ANR、系统广播全在这。测试脚本的标准动作：操作前 `logcat -c` 清空 → 操作 → `logcat -d > after.log` → 搜 ERROR/Exception。
+
+> **adb_sim 覆盖边界（重要）**：已实现 `devices` / `install`(-r) / `uninstall` / `logcat`(-c/-d) / `push` / `pull` / `shell getprop|setprop` / `shell dumpsys battery|window` / `shell am start|force-stop|broadcast` / `shell input`（只记日志，keyevent 3 会回桌面）/ `shell wm size|density` / `shell settings get` / `shell reboot`；**未实现** `connect`、`-s <serial>`、`pm list packages`、`tcpip`。`dumpsys activity top`/`dumpsys power` 只返回通用桩文本。接真机前按本清单逐条确认，别默认它是完整 adb。
 
 ---
 
@@ -149,7 +153,8 @@ adb 命令是"手工级"工具。规模化 UI 测试要上框架：
 |---|---|---|
 | **uiautomator2**（Python） | 基于 UiAutomator，Python 封装，`d.click(0.5, 0.5)` | **推荐入门**，Python 生态无缝衔接 |
 | Appium | 跨平台（iOS/Android），WebDriver 协议 | 多端统一、团队有移动端背景 |
-| AEE（Android Emulator Engine） | 无需 root，反射式控件定位 | 特殊场景 |
+| Espresso | Android 原生测试框架，白盒、需源码 | App 团队自测；车载 HMI 少用 |
+| Airtest / Poco | 图像识别 + 控件树混合 | 车机/游戏类 UI 常见，上手快 |
 
 **车机 UI 测试的现实**：车机界面动画多、深色主题、旋转屏，UI 自动化维护成本高。**业界主流做法是混合**：功能路径用 UI 自动化走主干，细节用"测试后门/日志断言"验证。这和 09 章 HMI 测试的"状态外置"思想一致——**能用数据断言就不要猜像素**。
 
@@ -169,7 +174,7 @@ Battery Level Should Be Greater Than    50
 ```
 
 **为什么封装成 RF 关键字而不是直接跑 adb 命令？**
-1. **可移植**：`ADB_PREFIX` 一处修改（`["adb"]` 换真机），116 个用例零改动；
+1. **可移植**：`ADB_PREFIX` 一处修改（`["adb"]` 换真机），276 个用例零改动；
 2. **断言语义化**：`Current Focus Should Contain` 内部完成 dumpsys 解析；
 3. **统一错误处理**：install 失败抛 AssertionError（用例 FAIL），而不是"命令返回非 0 没人管"。
 
@@ -234,11 +239,11 @@ adb shell am start ─────┴──► 同一个文件 ◄──── G
 python start_cockpit.py --speed 60 --coolant 125
 ```
 
-然后按 09 章 9.12 节的“联动体验清单”逐个操作——你会看到两块屏像真车一样呼吸与共。GUI 模式下仪表盘也会周期落盘显示状态（`dashboard_state.json`），所以**联动效果是可观测的**：改完车机，读一眼状态文件就知道仪表屏幕上显示了什么。
+然后按 09 章 9.11 节的“联动体验清单”逐个操作——你会看到两块屏像真车一样呼吸与共。GUI 模式下仪表盘也会周期落盘显示状态（`dashboard_state.json`），所以**联动效果是可观测的**：改完车机，读一眼状态文件就知道仪表屏幕上显示了什么。
 
 ---
 
-## 10.6 本章自检
+## 10.7 本章自检
 
 1. adb 的架构（client/server/daemon）？为什么它能跨 USB 和网络？
 2. 车机上启动一个应用的两种方式？测试脚本推荐哪种？为什么？
@@ -247,8 +252,6 @@ python start_cockpit.py --speed 60 --coolant 125
 5. 本项目的 AdbLibrary 怎么做到"用例零改动接真机"？
 
 ---
-
-**下一章：[11 · 综合实战项目](11_综合实战项目.md)**
 
 ### 📋 自查要点（答完再对，别提前看）
 

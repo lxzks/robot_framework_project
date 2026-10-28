@@ -153,13 +153,13 @@ python simulators/dashboard.py
 
 ## 🆘 卡住了怎么办
 
-| 你看到的现象 | 原因 | 怎么办 |
-|---|---|---|
-| `python: command not found` | 系统里没有 `python` 这个命令 | 试 `py simulators/ecu_sim.py --speed 60`（Windows）；或 `python3 ...`（Mac） |
-| `No module named 'PySide6'` | 图形界面库没装 | 用无界面模式：`python simulators/dashboard.py --headless`，然后**看不了窗口**，直接跳到 D2（不影响） |
-| 仪表窗口打开了但**指针不动** | 终端 1 的车没启动 / 被关了 | 确认终端 1 还在跑（有日志在滚动），如果关了重新开 |
-| 仪表窗口**一片黑** | 可能需要几秒初始化 | 等 5 秒；还不行就 Ctrl+C 重开 |
-| 车速一直显示 0 | 目标车速是 0 | 切到终端 1 输入 `speed 60` |
+| 你看到的现象                      | 原因                  | 怎么办                                                                         |
+| --------------------------- | ------------------- | --------------------------------------------------------------------------- |
+| `python: command not found` | 系统里没有 `python` 这个命令 | 试 `py simulators/ecu_sim.py --speed 60`（Windows）；或 `python3 ...`（Mac）       |
+| `No module named 'PySide6'` | 图形界面库没装             | 用无界面模式：`python simulators/dashboard.py --headless`，然后**看不了窗口**，直接跳到 D2（不影响） |
+| 仪表窗口打开了但**指针不动**            | 终端 1 的车没启动 / 被关了    | 确认终端 1 还在跑（有日志在滚动），如果关了重新开                                                  |
+| 仪表窗口**一片黑**                 | 可能需要几秒初始化           | 等 5 秒；还不行就 Ctrl+C 重开                                                        |
+| 车速一直显示 0                    | 目标车速是 0             | 切到终端 1 输入 `speed 60`                                                        |
 
 ---
 

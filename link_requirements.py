@@ -25,7 +25,18 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
+
+
+def _force_utf8_stdio() -> None:
+    """Windows 下 stdout 被重定向时默认 GBK，打印 ✓/✅ 会 UnicodeEncodeError。"""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
+
+_force_utf8_stdio()
 
 ROOT = Path(__file__).parent
 

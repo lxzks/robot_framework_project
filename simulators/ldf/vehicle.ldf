@@ -1,0 +1,207 @@
+{
+  "_file": "vehicle.ldf",
+  "_format": "教学版 LDF 子集（JSON 载体，扩展名沿用 .ldf）",
+  "_comment": [
+    "=============================================================================",
+    "vehicle.ldf — 教学版 LDF（LIN Description File）子集",
+    "=============================================================================",
+    "真实的 LDF 是一种类似 C 语法的文本描述文件（由 LDF 工具/主机厂提供），",
+    "描述 LIN 网络的：主节点/从节点、报文 Frame、信号 Signal 的位布局与缩放、",
+    "调度表 Schedule Table、诊断报文等。真实 LDF 由 Vector LDF Explorer /",
+    "CANoe 等工具解析，测试工程师一般不手写，而是'读 + 核对'。",
+    "",
+    "本项目为了零依赖（只用 Python 标准库 json），把它裁剪成 JSON 结构，",
+    "扩展名仍用 .ldf，便于你在文件管理器里一眼认出'这是网络数据库文件'。",
+    "字段语义与真实 LDF 对齐，够用来看懂'哪个 bit 是什么信号、怎么换算'：",
+    "  frame.id          LIN 帧 ID（6 bit，0x00~0x3B，0x3C~0x3F 保留给诊断/主请求）",
+    "  frame.length      数据场字节数（LIN 2.x 为 1~8 字节）",
+    "  frame.checksum    classic（经典：只累加数据）/ enhanced（增强：PID+数据）",
+    "  signal.start_bit  信号起始 bit（LIN 小端位序：bit0 = 首字节最低位）",
+    "  signal.length     信号位宽",
+    "  signal.scale      物理值 = 原始值 × scale + offset",
+    "  signal.values     枚举值表（原始值 → 文本，测试里叫 value table / VAL_）",
+    "",
+    "⚠ 本文件必须与 simulators/lin_sim.py 的 SIGNAL_DEFS 保持一致；",
+    "  测试套件 08 的'LDF 解码'用例就是拿这份定义去和仿真器发的字节交叉校验，",
+    "  任何一边改了布局，用例会立刻失败 —— 这正是'数据库与实现不一致'的检测。",
+    "============================================================================="
+  ],
+  "ldf_version": "teaching-subset-0.1",
+  "lin_protocol": "2.1",
+  "lin_speed_kbps": 19.2,
+  "master": {
+    "name": "BCM",
+    "comment": "车身控制器作为 LIN 主节点，按调度表轮询从节点（本项目由 lin_sim.py 的调度线程模拟）"
+  },
+  "slaves": [
+    {"name": "RainSensor", "comment": "雨量传感器（0x10 发布者）"},
+    {"name": "WiperMotor", "comment": "雨刷电机（0x11 发布者）"},
+    {"name": "SeatModule", "comment": "座椅模块（0x12 发布者）"}
+  ],
+  "schedule_table": {
+    "name": "NormalSchedule",
+    "slot_ms": 10,
+    "entries": [
+      {"slot": 0, "id": 16, "name": "RainSensorStatus", "delay_ms": 0},
+      {"slot": 1, "id": 17, "name": "WiperStatus", "delay_ms": 10},
+      {"slot": 2, "id": 18, "name": "SeatPosition", "delay_ms": 20},
+      {"slot": 3, "id": 60, "name": "MasterRequest", "delay_ms": 30}
+    ]
+  },
+  "frames": [
+    {
+      "id": 16,
+      "hex_id": "0x10",
+      "name": "RainSensorStatus",
+      "publisher": "RainSensor",
+      "subscribers": ["BCM"],
+      "length": 1,
+      "checksum": "enhanced",
+      "comment": "雨量传感器状态，调度表每 40ms 轮询一次",
+      "signals": [
+        {
+          "name": "rain_intensity",
+          "start_bit": 0,
+          "length": 8,
+          "byte_order": "little_endian",
+          "scale": 0.5,
+          "offset": 0,
+          "minimum": 0,
+          "maximum": 100,
+          "unit": "%",
+          "values": null,
+          "initial": 0,
+          "comment": "雨量强度：原始值 0~200 × 0.5 = 0~100%；0 = 无雨"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "hex_id": "0x11",
+      "name": "WiperStatus",
+      "publisher": "WiperMotor",
+      "subscribers": ["BCM"],
+      "length": 1,
+      "checksum": "enhanced",
+      "comment": "雨刷状态（档位 + 电机转速）",
+      "signals": [
+        {
+          "name": "wiper_state",
+          "start_bit": 0,
+          "length": 2,
+          "byte_order": "little_endian",
+          "scale": 1,
+          "offset": 0,
+          "minimum": 0,
+          "maximum": 3,
+          "unit": "",
+          "values": {
+            "0": "OFF",
+            "1": "INTERMITTENT",
+            "2": "LOW",
+            "3": "HIGH"
+          },
+          "initial": 0,
+          "comment": "雨刷档位：0=关，1=间歇，2=低速，3=高速"
+        },
+        {
+          "name": "wiper_speed",
+          "start_bit": 2,
+          "length": 6,
+          "byte_order": "little_endian",
+          "scale": 100,
+          "offset": 0,
+          "minimum": 0,
+          "maximum": 6300,
+          "unit": "rpm",
+          "values": null,
+          "initial": 0,
+          "comment": "雨刷电机转速：原始值 × 100 rpm"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "hex_id": "0x12",
+      "name": "SeatPosition",
+      "publisher": "SeatModule",
+      "subscribers": ["BCM"],
+      "length": 2,
+      "checksum": "enhanced",
+      "comment": "座椅位置：2 字节装两个信号（多信号位布局的典型例子）",
+      "signals": [
+        {
+          "name": "seat_slide",
+          "start_bit": 0,
+          "length": 8,
+          "byte_order": "little_endian",
+          "scale": 1,
+          "offset": 0,
+          "minimum": 0,
+          "maximum": 255,
+          "unit": "mm",
+          "values": null,
+          "initial": 0,
+          "comment": "座椅前后滑轨位置：0~255mm"
+        },
+        {
+          "name": "seat_backrest",
+          "start_bit": 8,
+          "length": 8,
+          "byte_order": "little_endian",
+          "scale": 0.5,
+          "offset": 0,
+          "minimum": 0,
+          "maximum": 127.5,
+          "unit": "deg",
+          "values": null,
+          "initial": 0,
+          "comment": "靠背角度：原始值 × 0.5°，0~127.5°（教学简化量程）"
+        }
+      ]
+    },
+    {
+      "id": 60,
+      "hex_id": "0x3C",
+      "name": "MasterRequest",
+      "publisher": "BCM(master)",
+      "subscribers": ["AllSlaves"],
+      "length": 8,
+      "checksum": "classic",
+      "comment": "主请求帧：LIN 2.x 规定这一帧用经典校验和（只累加数据字节）",
+      "signals": [
+        {
+          "name": "master_cmd",
+          "start_bit": 0,
+          "length": 8,
+          "byte_order": "little_endian",
+          "scale": 1,
+          "offset": 0,
+          "minimum": 0,
+          "maximum": 255,
+          "unit": "",
+          "values": {
+            "0": "SLEEP",
+            "1": "WAKEUP"
+          },
+          "initial": 1,
+          "comment": "主请求命令字：0=睡眠命令（停调度），1=唤醒/保持清醒"
+        },
+        {
+          "name": "request_payload",
+          "start_bit": 8,
+          "length": 56,
+          "byte_order": "little_endian",
+          "scale": 1,
+          "offset": 0,
+          "minimum": 0,
+          "maximum": 72057594037927935,
+          "unit": "",
+          "values": null,
+          "initial": 0,
+          "comment": "其余 7 字节载荷（教学项目未使用，保留位）"
+        }
+      ]
+    }
+  ]
+}

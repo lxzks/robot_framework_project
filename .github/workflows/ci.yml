@@ -1,7 +1,7 @@
 name: 车载自动化测试 CI
 
 # 触发方式：
-#   - push / PR：快速反馈（跑全部用例，约 1 分钟）
+#   - push / PR：pytest 30 个单元测试（秒级快速失败）+ 双 Python 版本矩阵跑 RF 全量 276 用例（约 6 分钟/版本；CI 无缓存约 8 分钟/版本）
 #   - nightly（每天北京时间 02:00）：完整跑 + 归档报告与覆盖率
 #   - 手动触发
 on:
@@ -12,11 +12,23 @@ on:
     - cron: '0 18 * * *'      # UTC 18:00 = 北京时间 02:00
   workflow_dispatch:
 
+# 同一分支的重复 push 只保留最新一次，避免排队浪费（手动触发也不取消）
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    name: 仿真座舱测试（50+ 用例）
+    name: 仿真座舱测试（276 用例 · Python ${{ matrix.python-version }}）
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    # Python 版本矩阵：3.12 = CI 主版本（依赖最稳），3.14 = 本地开发验证版本。
+    # fail-fast: false —— 一个版本失败不影响另一个版本跑完（矩阵的价值是"一次看全"）。
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
 
     steps:
       - name: 检出代码
@@ -25,7 +37,7 @@ jobs:
       - name: 安装 Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: 安装系统依赖（PySide6 运行库）
@@ -35,6 +47,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: pytest 单元测试（快速失败）
+        # 纯单元/逻辑测试，毫秒级；放在 RF 全量之前，跑挂了立刻失败，
+        # 不用等 6 分钟仿真测试跑完（失败快速反馈）。pytest 不入 requirements.txt，
+        # 在 CI 里单独装（本地 venv 已自带）。
+        run: |
+          python -m pip install pytest
+          python -m pytest tools/pytest_style -q
 
       - name: 测试规范一致性校验（需求/自动化引用）
         run: python test_spec_check.py
@@ -49,7 +69,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ github.run_number }}
+          name: test-results-${{ github.run_number }}-py${{ matrix.python-version }}
           path: |
             results/
           retention-days: 30

@@ -73,7 +73,10 @@ class DiagnosticTester:
         self._thread.start()
 
     def stop(self) -> None:
+        """停止收包线程并等待它真正退出（避免总线句柄/线程泄漏）。"""
         self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=1.0)
 
     # ------------------------------------------------------------------
     # 唯一收包线程：所有帧进 inbox；响应侧的 FF 自动重组
@@ -84,27 +87,51 @@ class DiagnosticTester:
                 msg = self.bus.recv_frame(timeout=0.1)
             except (OSError, ValueError):
                 break
-            if msg is None or msg.arbitration_id != ID_UDS_RESPONSE or not msg.data:
+            if msg is None:
                 continue
-            pci = msg.data[0]
-            data = bytes(msg.data)
-            with self._lock:
-                self._inbox.append(msg)
-            if pci & 0xF0 == 0x00:        # 单帧响应
-                with self._lock:
-                    self._pending.append(data[1:])
-            elif pci & 0xF0 == 0x10:      # 首帧 FF：Tester 侧回流控帧并启动重组
-                total = ((pci & 0x0F) << 8) | data[1]
+            # 线程级兜底：单帧处理异常不能让收包线程静默死亡（否则后续所有
+            # 诊断请求都超时，且没有任何日志线索）。
+            try:
+                self._handle_frame(msg)
+            except Exception:  # noqa: BLE001
+                log.exception("诊断响应帧处理异常（收包线程继续运行）")
                 self._tp = IsoTpReceiver()
+
+    def _handle_frame(self, msg) -> None:
+        """处理一帧收到的报文（由 _rx_loop 逐帧调用，异常由调用方兜底）。"""
+        if msg.arbitration_id != ID_UDS_RESPONSE or not msg.data:
+            return
+        pci = msg.data[0]
+        data = bytes(msg.data)
+        with self._lock:
+            self._inbox.append(msg)
+        if pci & 0xF0 == 0x00:        # 单帧响应
+            with self._lock:
+                self._pending.append(data[1:])
+        elif pci & 0xF0 == 0x10:      # 首帧 FF：Tester 侧回流控帧并启动重组
+            total = ((pci & 0x0F) << 8) | data[1]
+            self._tp = IsoTpReceiver()
+            try:
                 self._tp.feed(data)
-                # FC 是 Tester→ECU 方向，发到请求 ID 0x7E0
-                self.bus.send_frame(ID_UDS_REQUEST, bytes([0x30, 0x08, 0x00]))
-                log.info("收到多帧响应 FF，总长 %d，已回 FC", total)
-            elif pci & 0xF0 == 0x20:      # 连续帧 CF
+            except ValueError as exc:      # 非法首帧：重置状态机，不杀线程
+                log.warning("收到非法响应首帧（已重置 TP 状态机）: %s", exc)
+                self._tp = IsoTpReceiver()
+                return
+            # FC 是 Tester→ECU 方向，发到请求 ID 0x7E0
+            self.bus.send_frame(ID_UDS_REQUEST, bytes([0x30, 0x08, 0x00]))
+            log.info("收到多帧响应 FF，总长 %d，已回 FC", total)
+        elif pci & 0xF0 == 0x20:      # 连续帧 CF
+            # UDP 组播会丢包/重复/乱序 → TP 序号会错乱。必须捕获并重置状态机，
+            # 否则收包线程会永久死掉（现象：所有后续请求 3s 超时）。
+            try:
                 done, full = self._tp.feed(data)
-                if done and full:
-                    with self._lock:
-                        self._pending.append(full)
+            except ValueError as exc:
+                log.warning("TP 连续帧异常（已重置状态机）: %s", exc)
+                self._tp = IsoTpReceiver()
+                return
+            if done and full:
+                with self._lock:
+                    self._pending.append(full)
 
     # ------------------------------------------------------------------
     # 从收件箱/待处理队列取数据（唯一合法的等待方式）
@@ -123,10 +150,29 @@ class DiagnosticTester:
 
     # ------------------------------------------------------------------
     def send_request(self, request: bytes, timeout: float = 3.0):
-        """发一条 UDS 请求，等待响应。返回 (positive, UdsResponse)。"""
+        """发一条 UDS 请求，等待响应。返回 (positive, UdsResponse)。
+
+        响应匹配：UDS 正响应 SID = 请求 SID + 0x40，负响应 = `7F <请求SID> <NRC>`。
+        必须按 SID 匹配而不是"取第一条"——同一套件里可能有多个诊断仪实例
+        （DiagnosticLibrary + ObdLibrary）都监听 0x7E8，对方的响应帧在 UDP
+        组播下可能迟到，若不过滤会被误当成本次请求的响应（真实踩过的 flaky）。
+        """
+        req_sid = request[0] if request else 0
+
+        def _matches(payload) -> bool:
+            if not payload:
+                return False
+            resp_sid = payload[0]
+            if resp_sid == ((req_sid + 0x40) & 0xFF):
+                return True
+            return (resp_sid == 0x7F and len(payload) >= 2
+                    and payload[1] == req_sid)
+
         with self._lock:
             self._pending.clear()
             self._inbox.clear()
+            # 上一次未完成的多帧重组也重置，避免残留 CF 污染本次响应
+            self._tp = IsoTpReceiver()
         if len(request) <= 7:
             self.bus.send_frame(ID_UDS_REQUEST, bytes([len(request)]) + request)
         else:
@@ -147,8 +193,8 @@ class DiagnosticTester:
                     self._wait_for(
                         lambda m: (m.data[0] & 0xF0) == 0x30,
                         timeout=timeout, want_frame=True)
-        # 等完整响应
-        raw = self._wait_for(lambda _d: True, timeout=timeout)
+        # 等完整响应（按 SID 匹配，跳过其它诊断仪的串扰帧）
+        raw = self._wait_for(_matches, timeout=timeout)
         resp = parse_response(raw)
         return resp.positive, resp
 

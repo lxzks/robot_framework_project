@@ -26,7 +26,7 @@ python python_practice/check.py
 |---|---|---|---|
 | **P1** | 写一个计算函数（`max()`） | `ecu_sim.py` 算转速 | ⭐ |
 | **P2** | pathlib 读 JSON、取字段、处理不存在 | 所有关键字读状态文件 | ⭐⭐ |
-| **P3** | `@dataclass` 定义数据结构 | `dtc_manager.py` 的 `DtcRecord` | ⭐ |
+| **P3** | `@dataclass` 定义数据结构 | 仿照 `dtc_manager.py` 的 `DtcRecord`（字段按本题简化：`count` 表示发生次数） | ⭐ |
 | **P4** | `try/except` 让程序不崩 | 所有"尽力清理"逻辑 | ⭐⭐ |
 | **P5** | 列表推导 / `.get()` 默认值 | `dashboard.py` 取点亮的灯 | ⭐⭐ |
 | **P6** | `setdefault` 分组统计 | `trace_matrix.py` 建需求→用例映射 | ⭐⭐ |
@@ -39,7 +39,8 @@ python python_practice/check.py
 
 ## 做完之后（P9 / P10 扩展任务）
 
-这两题**没有自动判分**（因为要改项目文件），但做完你的能力会有一个台阶：
+这两题**没有自动判分**（判分器 `check.py` 只覆盖 P1~P8；P9 要改库、P10 要新建场景文件），
+但做完你的能力会有一个台阶：
 
 ### P9 · 给关键词库加一个关键字
 
@@ -57,16 +58,23 @@ def get_fuel_level(self) -> float:
 
 **你会学到**：`@keyword` 装饰器怎么工作、库的 `scope` 为什么要 SUITE、关键字命名规范。
 
-### P10 · 写一个全新场景
+### P10 · 写一个全新场景（电压跌落 → 故障灯 + DTC）
 
-照 `scenarios/01_powertrain_signals.robot` 的风格，自己写一个场景文件：
+照 `scenarios/11_fault_injection.robot` 的风格，自己写一个场景文件：
 
-> **需求**：油量低于 10% 时，仪表应点亮"加油"警告灯。
-> （提示：油量信号叫 `FuelLevel`，在 `ClusterData` 报文里；先看 `scenarios/02` 怎么断言灯）
+> **需求**：供电电压跌到 **9V**（冷启动临界）时，ECU 应记录 **P0562**，并点亮仪表**电池警告灯（BatteryLow）**。
+> **提示**：
+> - 注入低压用工程模式激励：`Set Test Stimulus    voltage=9`（需先 `Enter Extended Session` + `Security Unlock`）
+> - 等 DTC：`Wait Until Keyword Succeeds    15x    1s    DTC List Should Contain    P0562`
+> - 断言灯：`Telltale Should Be Lit    BatteryLow    timeout=10`
+> - **必须写 `Test Teardown` 清激励**（`Clear Test Stimulus` + `11 01`），否则污染后续用例
 
 写完后用 `python -m robot --outputdir results scenarios/你的文件.robot` 跑通。
 
-**你会学到**：从"一句话需求"到"可执行用例"的完整转换（这也是 [docs/17 章](../docs/17_从需求到脚本.md) 的内容）。
+**你会学到**：从"一句话需求"到"可执行用例"的完整转换（这也是 [docs/17 章](../docs/17_从需求到脚本.md) 的内容）；故障注入 + 清理 = 场景 11 的核心模式。
+
+> 💡 为什么不用"油量低点亮加油灯"？本项目 DBC 的 12 个警告灯里没有加油灯（只有油量百分比），
+> 所以那道题在本仓库里做不出来；换成"低压→BatteryLow"就能真实跑通。
 
 ---
 

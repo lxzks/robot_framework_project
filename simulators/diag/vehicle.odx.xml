@@ -1,0 +1,388 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+================================================================================
+ vehicle.odx.xml — 教学版 ODX（Open Diagnostic data eXchange）子集
+================================================================================
+ 真实 ODX 是 ISO 22901 定义的复杂 XML：一个 ODX 工程包含分层 DIAG-LAYER
+ （PROTOCOL / FUNCTIONAL-GROUP / BASE-VARIANT / ECU-VARIANT / ECU-SHARED-DATA）、
+ 大量 COMPU-METHOD、DIAG-CODED-TYPE、PHYSICAL-TYPE 和变体继承关系。
+
+ 本文件只保留"测试自动化真正会用到"的核心信息（教学版简化点）：
+   1) 用无命名空间的简化标签，不展开 ODX 的继承/引用机制；
+   2) DATA-IDENTIFIER 只描述 SHORT-NAME / ID / ENCODING / LENGTH，
+      不展开真实 ODX 的 DIAG-CODED-TYPE / COMPU-METHOD；
+   3) SERVICE 用文本描述请求/正响应结构（真实 ODX 用字节级 REQUEST/ RESPONSE
+      PARAMETER 定义），够读够用；
+   4) 只收录本项目 ECU（simulators/ecu_sim.py）**实际实现**的 DID/服务/DTC，
+      保证"数据库与 ECU 软件版本一致"——这是 ODX 管理的核心原则。
+      当前 ECU 已实现 10 个对外 DID（含 Wave3 OTA 模块新增的 F195 应用软件版本 /
+      F1A3 Bootloader 版本 / F186 硬件版本）。
+      说明：
+        - 行业常见的 F191（硬件号）本项目 ECU 未实现，故本数据库不收录；
+        - F1A1/F1A2 是 OTA 刷写内部暂存 DID，属于 Bootloader 流程细节，
+          不纳入"对外诊断接口"数据库（真实项目通常由刷写规范描述）。
+      数据库与 ECU 版本不匹配时，ODX Should Be Valid / 读 DID 用例会暴露问题。
+
+ 编码约定：
+   ENCODING="ASCII"  数据场按 ASCII 文本解码，LENGTH 是字节数
+   ENCODING="HEX"    数据场按十六进制字符串展示，LENGTH 是字节数
+================================================================================
+-->
+<ODX>
+  <FILE-INFO>
+    <FILE-NAME>vehicle.odx.xml</FILE-NAME>
+    <VERSION>1.0.0</VERSION>
+    <FORMAT>ODX-ISO-22901 (teaching subset)</FORMAT>
+    <DESCRIPTION>教学项目 robot_framework 的仪表 ECU（CLUSTER_ECU）诊断数据库</DESCRIPTION>
+  </FILE-INFO>
+
+  <!-- ================================================================ -->
+  <!-- 诊断层：ECU 变体信息（诊断地址 / 响应地址 / 协议）                -->
+  <!-- ================================================================ -->
+  <DIAG-LAYER>
+    <ECU-VARIANT short_name="CLUSTER_ECU">
+      <LONG-NAME>Vehicle Cluster ECU (数字仪表)</LONG-NAME>
+      <DIAG-ADDRESS>0x7E0</DIAG-ADDRESS>
+      <RESPONSE-ADDRESS>0x7E8</RESPONSE-ADDRESS>
+      <FUNCTIONAL-ADDRESS>0x7DF</FUNCTIONAL-ADDRESS>
+      <PROTOCOL>UDS_ISO_14229</PROTOCOL>
+      <SESSION short_name="DEFAULT">上电默认会话，只读类服务可用</SESSION>
+      <SESSION short_name="EXTENDED">扩展会话，写 DID / 执行器 / 内存读写 / 例程</SESSION>
+      <SESSION short_name="PROGRAMMING">编程会话，刷写三件套 0x34/0x36/0x37</SESSION>
+      <DESCRIPTION>本项目虚拟 CAN 上的仪表 ECU，模拟器为 simulators/ecu_sim.py</DESCRIPTION>
+    </ECU-VARIANT>
+  </DIAG-LAYER>
+
+  <!-- ================================================================ -->
+  <!-- 数据标识符（DID）：与 ecu_sim.DID_DATABASE 已实现的一致            -->
+  <!-- ================================================================ -->
+  <DATA-IDENTIFIERS>
+    <DATA-IDENTIFIER>
+      <SHORT-NAME>PartNumber</SHORT-NAME>
+      <ID>F187</ID>
+      <LONG-NAME>零件号</LONG-NAME>
+      <ENCODING>ASCII</ENCODING>
+      <LENGTH>14</LENGTH>
+      <READ-ONLY>true</READ-ONLY>
+      <DESCRIPTION>硬件零件号，值形如 HW-IC-2026-001</DESCRIPTION>
+    </DATA-IDENTIFIER>
+    <DATA-IDENTIFIER>
+      <SHORT-NAME>SoftwareVersion</SHORT-NAME>
+      <ID>F188</ID>
+      <LONG-NAME>软件版本号</LONG-NAME>
+      <ENCODING>ASCII</ENCODING>
+      <LENGTH>16</LENGTH>
+      <READ-ONLY>false</READ-ONLY>
+      <DESCRIPTION>应用软件版本，值形如 SW-CLUSTER-3.2.1（支持 0x2E 写入）</DESCRIPTION>
+    </DATA-IDENTIFIER>
+    <DATA-IDENTIFIER>
+      <SHORT-NAME>SerialNumber</SHORT-NAME>
+      <ID>F189</ID>
+      <LONG-NAME>ECU 序列号</LONG-NAME>
+      <ENCODING>ASCII</ENCODING>
+      <LENGTH>17</LENGTH>
+      <READ-ONLY>true</READ-ONLY>
+      <DESCRIPTION>产线序列号，值形如 ECU-2026-0918-007</DESCRIPTION>
+    </DATA-IDENTIFIER>
+    <DATA-IDENTIFIER>
+      <SHORT-NAME>Supplier</SHORT-NAME>
+      <ID>F18A</ID>
+      <LONG-NAME>供应商代号</LONG-NAME>
+      <ENCODING>ASCII</ENCODING>
+      <LENGTH>7</LENGTH>
+      <READ-ONLY>true</READ-ONLY>
+      <DESCRIPTION>供应商代码，值形如 VISTEON</DESCRIPTION>
+    </DATA-IDENTIFIER>
+    <DATA-IDENTIFIER>
+      <SHORT-NAME>VIN</SHORT-NAME>
+      <ID>F190</ID>
+      <LONG-NAME>车辆识别码 VIN</LONG-NAME>
+      <ENCODING>ASCII</ENCODING>
+      <LENGTH>17</LENGTH>
+      <READ-ONLY>true</READ-ONLY>
+      <DESCRIPTION>17 位 VIN（响应 20 字节，测试端需 ISO-TP 多帧重组）</DESCRIPTION>
+    </DATA-IDENTIFIER>
+    <DATA-IDENTIFIER>
+      <SHORT-NAME>ApplicationVersion</SHORT-NAME>
+      <ID>F1A0</ID>
+      <LONG-NAME>应用版本</LONG-NAME>
+      <ENCODING>ASCII</ENCODING>
+      <LENGTH>6</LENGTH>
+      <READ-ONLY>false</READ-ONLY>
+      <DESCRIPTION>应用版本，值形如 V1.0.0（支持 0x2E 写入）</DESCRIPTION>
+    </DATA-IDENTIFIER>
+    <DATA-IDENTIFIER>
+      <SHORT-NAME>ApplicationSoftwareVersion</SHORT-NAME>
+      <ID>F195</ID>
+      <LONG-NAME>应用软件版本号</LONG-NAME>
+      <ENCODING>ASCII</ENCODING>
+      <LENGTH>6</LENGTH>
+      <READ-ONLY>true</READ-ONLY>
+      <DESCRIPTION>OTA 刷写成功后 + 0x11 复位生效，更新为固件包版本（v1.0.0 → v1.1.0）</DESCRIPTION>
+    </DATA-IDENTIFIER>
+    <DATA-IDENTIFIER>
+      <SHORT-NAME>BootloaderVersion</SHORT-NAME>
+      <ID>F1A3</ID>
+      <LONG-NAME>Bootloader 版本</LONG-NAME>
+      <ENCODING>ASCII</ENCODING>
+      <LENGTH>8</LENGTH>
+      <READ-ONLY>true</READ-ONLY>
+      <DESCRIPTION>Bootloader 软件版本，值形如 BL-1.0.0（产线与售后升级前核对）</DESCRIPTION>
+    </DATA-IDENTIFIER>
+    <DATA-IDENTIFIER>
+      <SHORT-NAME>HardwareVersion</SHORT-NAME>
+      <ID>F186</ID>
+      <LONG-NAME>硬件版本</LONG-NAME>
+      <ENCODING>ASCII</ENCODING>
+      <LENGTH>13</LENGTH>
+      <READ-ONLY>true</READ-ONLY>
+      <DESCRIPTION>硬件版本/硬件号，值形如 HW-VISTEON-P7（软硬件兼容性核对）</DESCRIPTION>
+    </DATA-IDENTIFIER>
+    <DATA-IDENTIFIER>
+      <SHORT-NAME>TestStimulus</SHORT-NAME>
+      <ID>F1B0</ID>
+      <LONG-NAME>工程模式测试激励</LONG-NAME>
+      <ENCODING>HEX</ENCODING>
+      <LENGTH>4</LENGTH>
+      <READ-ONLY>false</READ-ONLY>
+      <DESCRIPTION>4 字节激励：byte0=电压V byte1=丢帧率% byte2=报文停发位图 byte3=保留（写需安全解锁）</DESCRIPTION>
+    </DATA-IDENTIFIER>
+  </DATA-IDENTIFIERS>
+
+  <!-- ================================================================ -->
+  <!-- DTC：与 simulators/dtc_manager.py 的 FAULT_CATALOG 一致          -->
+  <!-- ================================================================ -->
+  <DTCS>
+    <DTC>
+      <CODE>P0116</CODE>
+      <LONG-NAME>发动机冷却液温度传感器电路范围/性能故障</LONG-NAME>
+      <DESCRIPTION>冷却液温度超过 120℃ 或低于 -30℃ 阈值</DESCRIPTION>
+      <TYPE>2-BYTE-P</TYPE>
+      <SEVERITY>MEDIUM</SEVERITY>
+    </DTC>
+    <DTC>
+      <CODE>P0117</CODE>
+      <LONG-NAME>发动机冷却液温度传感器电路低电位</LONG-NAME>
+      <DESCRIPTION>冷却液温度低于 -30℃（传感器对地短路）</DESCRIPTION>
+      <TYPE>2-BYTE-P</TYPE>
+      <SEVERITY>MEDIUM</SEVERITY>
+    </DTC>
+    <DTC>
+      <CODE>P0562</CODE>
+      <LONG-NAME>系统电压过低</LONG-NAME>
+      <DESCRIPTION>蓄电池电压低于 10.5V</DESCRIPTION>
+      <TYPE>2-BYTE-P</TYPE>
+      <SEVERITY>HIGH</SEVERITY>
+    </DTC>
+    <DTC>
+      <CODE>P0563</CODE>
+      <LONG-NAME>系统电压过高</LONG-NAME>
+      <DESCRIPTION>蓄电池电压高于 15.5V</DESCRIPTION>
+      <TYPE>2-BYTE-P</TYPE>
+      <SEVERITY>HIGH</SEVERITY>
+    </DTC>
+    <DTC>
+      <CODE>P0135</CODE>
+      <LONG-NAME>氧传感器加热器电路故障</LONG-NAME>
+      <DESCRIPTION>氧传感器加热器开路（MIL 保持型故障）</DESCRIPTION>
+      <TYPE>2-BYTE-P</TYPE>
+      <SEVERITY>LOW</SEVERITY>
+    </DTC>
+  </DTCS>
+
+  <!-- ================================================================ -->
+  <!-- 诊断服务：与 ecu_sim.handle_uds_request 的 17 个 handler 一致     -->
+  <!-- ================================================================ -->
+  <SERVICES>
+    <SERVICE>
+      <SHORT-NAME>DiagnosticSessionControl</SHORT-NAME>
+      <SID>0x10</SID>
+      <REQUEST>sub-function: 0x01 默认 / 0x02 编程 / 0x03 扩展</REQUEST>
+      <POSITIVE-RESPONSE>0x50 + sub-function + P2(2B) + P2*(2B)</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x01,0x02,0x03</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>false</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>ECUReset</SHORT-NAME>
+      <SID>0x11</SID>
+      <REQUEST>sub-function: 0x01 硬复位 / 0x02 钥匙开关 / 0x03 软复位</REQUEST>
+      <POSITIVE-RESPONSE>0x51 + sub-function</POSITIVE-RESPONSE>
+      <SECURITY-REQUIRED>false</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>ClearDiagnosticInformation</SHORT-NAME>
+      <SID>0x14</SID>
+      <REQUEST>groupOfDTC: 0xFFFFFF 全部 / 3 字节组</REQUEST>
+      <POSITIVE-RESPONSE>0x54</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x01,0x03</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>false</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>ReadDTCInformation</SHORT-NAME>
+      <SID>0x19</SID>
+      <REQUEST>sub-function: 0x01 数量 / 0x02 按状态掩码 / 0x03 快照</REQUEST>
+      <POSITIVE-RESPONSE>0x59 + sub-function + DTC 记录</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x01,0x03</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>false</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>ReadDataByIdentifier</SHORT-NAME>
+      <SID>0x22</SID>
+      <REQUEST>DID: 2 字节（如 F1 90 = VIN / F1 87 = 零件号）</REQUEST>
+      <POSITIVE-RESPONSE>0x62 + DID(2B) + 数据</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x01,0x02,0x03</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>false</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>SecurityAccess</SHORT-NAME>
+      <SID>0x27</SID>
+      <REQUEST>sub-function: 0x01 请求种子 / 0x02 发送密钥</REQUEST>
+      <POSITIVE-RESPONSE>0x67 + sub-function + seed/key 数据</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x01,0x02,0x03</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>false</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>CommunicationControl</SHORT-NAME>
+      <SID>0x28</SID>
+      <REQUEST>sub-function: 0x00 恢复 / 0x01 停发 / 0x02 停收 / 0x03 收发都停</REQUEST>
+      <POSITIVE-RESPONSE>0x68 + sub-function</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x03</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>false</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>WriteDataByIdentifier</SHORT-NAME>
+      <SID>0x2E</SID>
+      <REQUEST>DID(2B) + 数据（可写 DID：F188/F1A0/F1B0）</REQUEST>
+      <POSITIVE-RESPONSE>0x6E + DID(2B)</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x03</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>true</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>InputOutputControlByIdentifier</SHORT-NAME>
+      <SID>0x2F</SID>
+      <REQUEST>DID(2B) + control(1B) + 控制值</REQUEST>
+      <POSITIVE-RESPONSE>0x6F + DID(2B) + controlState</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x03</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>true</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>RoutineControl</SHORT-NAME>
+      <SID>0x31</SID>
+      <REQUEST>sub-function: 0x01 启动 / 0x02 停止 / 0x03 查询结果 + routineIdentifier(2B)</REQUEST>
+      <POSITIVE-RESPONSE>0x71 + sub-function + routineIdentifier + 结果</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x03</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>false</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>RequestDownload</SHORT-NAME>
+      <SID>0x34</SID>
+      <REQUEST>dataFormatIdentifier(1B) + addressAndLengthFormatIdentifier(1B) + 地址 + 长度</REQUEST>
+      <POSITIVE-RESPONSE>0x74 + lengthFormatIdentifier + maxBlockLength</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x02</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>true</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>TransferData</SHORT-NAME>
+      <SID>0x36</SID>
+      <REQUEST>blockSequenceCounter(1B) + 数据块</REQUEST>
+      <POSITIVE-RESPONSE>0x76 + blockSequenceCounter</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x02</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>true</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>RequestTransferExit</SHORT-NAME>
+      <SID>0x37</SID>
+      <REQUEST>（无参数）</REQUEST>
+      <POSITIVE-RESPONSE>0x77</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x02</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>true</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>ReadMemoryByAddress</SHORT-NAME>
+      <SID>0x23</SID>
+      <REQUEST>addressAndLengthFormatIdentifier(1B) + 地址 + 长度</REQUEST>
+      <POSITIVE-RESPONSE>0x63 + 数据</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x03</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>true</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>WriteMemoryByAddress</SHORT-NAME>
+      <SID>0x3D</SID>
+      <REQUEST>addressAndLengthFormatIdentifier(1B) + 地址 + 长度 + 数据</REQUEST>
+      <POSITIVE-RESPONSE>0x7D + addressAndLengthFormatIdentifier + 地址 + 长度</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x03</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>true</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>TesterPresent</SHORT-NAME>
+      <SID>0x3E</SID>
+      <REQUEST>sub-function: 0x00（或 0x80 抑制正响应）</REQUEST>
+      <POSITIVE-RESPONSE>0x7E + sub-function</POSITIVE-RESPONSE>
+      <SECURITY-REQUIRED>false</SECURITY-REQUIRED>
+    </SERVICE>
+    <SERVICE>
+      <SHORT-NAME>ControlDTCSetting</SHORT-NAME>
+      <SID>0x85</SID>
+      <REQUEST>sub-function: 0x01 恢复 / 0x02 暂停</REQUEST>
+      <POSITIVE-RESPONSE>0xC5 + sub-function</POSITIVE-RESPONSE>
+      <SUPPORTED-SESSIONS>0x03</SUPPORTED-SESSIONS>
+      <SECURITY-REQUIRED>false</SECURITY-REQUIRED>
+    </SERVICE>
+  </SERVICES>
+
+  <!-- ================================================================ -->
+  <!-- COMPARAM：会话/安全访问/时序等"参数常量"                          -->
+  <!-- ================================================================ -->
+  <COMPARAMS>
+    <COMPARAM>
+      <NAME>SESSION_DEFAULT</NAME>
+      <VALUE>0x01</VALUE>
+      <DESCRIPTION>默认会话子功能值</DESCRIPTION>
+    </COMPARAM>
+    <COMPARAM>
+      <NAME>SESSION_PROGRAMMING</NAME>
+      <VALUE>0x02</VALUE>
+      <DESCRIPTION>编程会话子功能值</DESCRIPTION>
+    </COMPARAM>
+    <COMPARAM>
+      <NAME>SESSION_EXTENDED</NAME>
+      <VALUE>0x03</VALUE>
+      <DESCRIPTION>扩展会话子功能值</DESCRIPTION>
+    </COMPARAM>
+    <COMPARAM>
+      <NAME>SECURITY_LEVEL_SEED</NAME>
+      <VALUE>0x01</VALUE>
+      <DESCRIPTION>安全访问：请求种子子功能</DESCRIPTION>
+    </COMPARAM>
+    <COMPARAM>
+      <NAME>SECURITY_LEVEL_KEY</NAME>
+      <VALUE>0x02</VALUE>
+      <DESCRIPTION>安全访问：发送密钥子功能</DESCRIPTION>
+    </COMPARAM>
+    <COMPARAM>
+      <NAME>SECURITY_XOR_KEY</NAME>
+      <VALUE>0x5A5A5A5A</VALUE>
+      <DESCRIPTION>教学版密钥算法常量：key = seed XOR 0x5A5A5A5A</DESCRIPTION>
+    </COMPARAM>
+    <COMPARAM>
+      <NAME>P2_MAX_MS</NAME>
+      <VALUE>50</VALUE>
+      <DESCRIPTION>诊断请求 P2 超时（毫秒）</DESCRIPTION>
+    </COMPARAM>
+    <COMPARAM>
+      <NAME>P2_STAR_MAX_MS</NAME>
+      <VALUE>5000</VALUE>
+      <DESCRIPTION>P2* 扩展超时（毫秒，NRC 0x78 后）</DESCRIPTION>
+    </COMPARAM>
+    <COMPARAM>
+      <NAME>CLEAR_DTC_GROUP</NAME>
+      <VALUE>0xFFFFFF</VALUE>
+      <DESCRIPTION>清全部 DTC 的 groupOfDTC</DESCRIPTION>
+    </COMPARAM>
+    <COMPARAM>
+      <NAME>TESTER_PRESENT_SUBFUNC</NAME>
+      <VALUE>0x00</VALUE>
+      <DESCRIPTION>TesterPresent 子功能值</DESCRIPTION>
+    </COMPARAM>
+  </COMPARAMS>
+</ODX>

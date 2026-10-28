@@ -230,3 +230,5 @@ if __name__ == "__main__":
     with VirtualCanBus("SELF-TEST") as bus:
         bus.send_frame(0x100, bytes([0x88, 0x13, 0x00, 0x80, 0x5A, 0x33, 0, 0]))
         print("已发送测试帧 0x100，data=881300805a330000")
+
+

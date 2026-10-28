@@ -144,13 +144,16 @@ python -m robot --outputdir results test_car.robot
 - 有一个**空模板** `exercise.robot`（带 TODO 提示）
 - 有**参考答案** `solution.robot`（做完再看）
 
-**要求**：先自己做，做完再对答案。做完跑一下判分器：
+**要求**：先自己做，做完再对答案。**验证你的练习**用这条命令：
 
 ```bash
-python training/check_all.py
+python -m robot --outputdir results/training training/L1_first_case/exercise.robot
 ```
 
-如果 L1 显示通过，说明你今天的核心技能已经掌握了。
+看到 `2 tests, 2 passed, 0 failed` 才算 L1 通过（有 TODO 没补完会是 `FAIL`，按提示补）。
+
+> ⚠️ `python training/check_all.py` **不是给你的练习判分**——它只跑 6 个 `solution.robot`
+> （参考答案）做环境自检，即使你一行没写也会显示 6/6。你的答案只认上面 exercise 的输出。
 
 ---
 
@@ -173,7 +176,7 @@ python training/check_all.py
 | `Suite setup failed` / 环境起不来 | 端口被占用（上次没关干净） | 等 10 秒重试；或检查有没有残留的 python 进程 |
 | 一直是 `车速 0 不在 50~70` | 车没启动 / Setup 没执行 | 看终端输出里有没有"ECU 模拟器已启动" |
 | `No keyword with name 'Read Signal From Bus'` | `Resource` 那行没写 / 路径错 | 检查第 1 节那 4 行是否完整 |
-| 想手动验证一下 | — | 开两个终端跑 `ecu_sim.py` + `uds_client.py`，或直接跑 `python -m robot --test "车速*" test_car.robot` |
+| 想手动验证一下 | — | 开两个终端跑 `ecu_sim.py` + `dashboard.py --headless`，或直接跑 `python -m robot --test "车速*" test_car.robot` |
 
 ---
 
