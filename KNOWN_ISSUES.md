@@ -56,6 +56,7 @@
 ### HIL 台架（38 章 / `hil_rack.py`）
 - **仿真台架**（TCP JSON 模拟 IO 板），不是真实 dSPACE/Vector VT System；电压/IO/继电器语义是教学实现。
 - 后端抽象 `HIL_BACKEND=sim|real`：**real 未实现**，会明确报"需接真实台架"并给接入位置（这是有意设计的替换点，不假通过）。
+- **真实硬件接入层已就绪**：CAN 侧 `CAN_INTERFACE/CAN_CHANNEL/CAN_BITRATE`、ADB 侧 `ADB_BIN` 环境变量切换（读写见 `simulators/bus.py` / `libraries/AdbLibrary.py`），探针 `tools/hardware_check.py` 可检查配置并给排查清单；但**作者没有真实 CAN 卡/真车机可验证**——接线、驱动、波特率一致性需你在真机上确认（见 README「接真实硬件」与 docs/33 §33.11）。
 
 ## 五、🟨 测试有效性局限（会漏 bug）
 
@@ -91,14 +92,15 @@
 **工程**
 - **测试不能并发运行**：所有套件共享虚拟总线（UDP 组播 233.255.0.1:30000）、端口（13400/8080/4723/9090/30001+）与状态文件，同时跑两个 robot/全量回归会互相干扰（复查期间曾因此出现 4 个假失败）。**全量回归必须独占运行**，库里的 `.audit/robot_run.lock` 只是团队约定。
 - 残余 flaky：虚拟总线是 UDP 组播、无真实 CAN 的帧重传，极端负载下仍可能偶发单帧丢失（已做多层缓解：幂等重试/块重试/锁定容忍/恢复重试）；全量回归建议连跑两次确认稳定（本次复查最终隔离运行 276/276 通过）。
-- CI 双 Python 版本矩阵耗时翻倍（约 8 分钟/版本）；PR 仍跑全量，可拆"PR 冒烟 + nightly 全量"。
+- CI 已拆"PR 冒烟（29 条）/ push+nightly 全量"，PR 反馈约 2 分钟/版本；双版本矩阵全量仍约 8 分钟/版本。
+- 已加文档数字门禁 `tools/check_docs_consistency.py`（CI 每个 PR 跑）：现场统计用例/需求/教程/训练数 + 过期数字黑名单。
 - 提交历史含 `new commit`；公开仓库若要整洁需 squash（改写已推送历史）。
 - `test_spec_check.py` 只校验"需求/用例是否存在"，未校验 spec 引用与用例 Tags 一致性。
 - Dockerfile 未本机 build 验证；无 Allure/CI 报告平台实装；无正式《测试计划》《变更影响分析》模板。
 
 **Wave4（下一步可扩展，详见 docs/39 §39.4）**
 - 真实台架/CANoe 工程实战（33/38 章已给接口与替换点）、实车与产线 EOL、车型项目案例复盘。
-- 面试演示脚本与录屏、能力认证自检表落地（docs/39 已给结构）。
+- 面试演示脚本已交付（`deliverables/demo_script.md`），**录屏**尚未做；能力认证自检表已在 39 章交付。
 - 可选：OTA 签名/安全启动深化、SOME-IP TLS、HMI 真屏截图接入（QScreen/ADB/采集卡）、性能资源指标（psutil）。
 
 ## 八、Wave1~3 新增与修复摘要
@@ -117,12 +119,23 @@
 5. OTA 引入后 0x31 01 FF00 校验从"只比长度"扩展为"长度+CRC32"（未配置 CRC 时保持旧行为，既有套件兼容）。
 6. ODX 读 DID 迟到重复响应误认（DID 二次校验 + 重试）。
 
-## 九、最近一次全量验证（2026-10-28）
+## 八·五、工程/学习材料增强（本轮）
 
-- `python run_tests.py --report` → **276/276 通过（100%）**，耗时 **365.9s（约 6 分钟）**
+- `tools/hardware_check.py`：真实硬件探针（仿真/真实模式识别、CAN 接口连通性、adb version、排查清单）。
+- `tools/check_docs_consistency.py`：文档数字一致性门禁（CI 已在 PR 流程中执行）。
+- `simulators/bus.py` 支持 `CAN_INTERFACE/CAN_CHANNEL/CAN_BITRATE`；`libraries/AdbLibrary.py` 支持 `ADB_BIN`（默认行为不变）。
+- `deliverables/demo_script.md`：15 分钟面试/汇报演示脚本（含追问答案与应急预案）。
+- `start_here/毕业任务参考答案.md`：P0117 补测完整答案（需求→用例→追溯→覆盖率变化）。
+- CI：PR 只跑冒烟（29 条）+ 文档门禁；push main/nightly 跑全量并归档。
+
+## 九、最近一次全量验证（2026-10-29 · 完善轮后隔离运行）
+
+- `python run_tests.py --report` → **276/276 通过（100%）**，耗时 **366.1s（约 6 分钟）**
 - 覆盖率：UDS **17/17**、信号 35/35、DTC 3/5、OBD 4/4、综合 **55/57（96.5%）**
 - 需求追溯：**124/124 = 100%**，关联 **318 条**，孤儿用例 **1**
-- `robot --dryrun` 276/276；文档链接 **500+ 条（本次复查 513 条）0 失效**；`python -m pytest tools/pytest_style -q` → 30 passed
+- `python run_tests.py --tag smoke` → **29/29**（CI PR 快速反馈路径，约 2 分钟）
+- `python tools/check_docs_consistency.py` → ✅ 全部一致（CI 门禁）；`python tools/hardware_check.py` → ✅ 纯仿真模式
+- `robot --dryrun` 276/276；文档链接 **522 条 0 失效**；`python -m pytest tools/pytest_style -q` → 30 passed
 
 > 更细的审计结论见 `.audit/`（本地未提交）。教程到此完整：00~39 篇 + 12 个训练 + 16 个场景。
 

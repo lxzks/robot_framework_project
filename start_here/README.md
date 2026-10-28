@@ -131,6 +131,8 @@ D7 里你看到覆盖率是 **96.5%，其中 DTC 覆盖 3/5** —— 有 2 个�
 
 ### 任务：补上 P0117 的测试
 
+> 💡 先自己做；卡住或做完后想对照，看 [毕业任务参考答案.md](毕业任务参考答案.md)（含 spoiler，建议最后看）。
+
 **需求（客户提的）**：
 
 > 水温低于 **-30℃**（传感器对地短路）时，ECU 应记录 **P0117**，并点亮**水温报警灯**。
@@ -140,7 +142,7 @@ D7 里你看到覆盖率是 **96.5%，其中 DTC 覆盖 3/5** —— 有 2 个�
 | 步骤 | 做什么 | 怎么做 |
 |---|---|---|
 | ① 写需求 | 在需求清单加一条 | `requirements/requirements.yaml` 里加 `REQ-DTC-007`（照现有格式抄） |
-| ② 写用例 | 新建一个 `.robot` | `scenarios/13_water_temp_low.robot` |
+| ② 写用例 | 新建一个 `.robot` | `scenarios/17_water_temp_low.robot` |
 | ③ 造场景 | **启动时**把水温设成 -40 | `Suite Setup    Start Vehicle Environment    coolant=-40` |
 | ④ 写断言 | 等 P0117 + 确认灯亮 | 见下方"关键提示" |
 | ⑤ 打标签+追溯 | 登记关系、看矩阵 | 见下方"第 5 步怎么做"：改 `link_requirements.py` 里的 `MAPPING` |
@@ -174,13 +176,13 @@ Suite Teardown   Stop Vehicle Environment
 之前一行）：
 
 ```python
-    "scenarios/13_water_temp_low.robot": {
+    "scenarios/17_water_temp_low.robot": {
         "水温过低应记录 P0117 并点亮水温灯": ["REQ-DTC-007"],
     },
 ```
 
 > 💡 格式说明：**`"文件路径": { "用例名": [需求ID, ...] }`**。
-> 文件路径是**相对项目根目录**的（`scenarios/13_...`），用例名必须和 `.robot` 里写的一字不差。
+> 文件路径是**相对项目根目录**的（`scenarios/17_...`），用例名必须和 `.robot` 里写的一字不差。
 > 加完保存，然后跑：
 > ```bash
 > python link_requirements.py --dry-run    # 先看它会做什么（不写入）

@@ -19,6 +19,8 @@ AdbLibrary.py — Robot Framework ADB / Android 关键字库
 
 from __future__ import annotations
 
+import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -29,11 +31,32 @@ from robot.api.logger import console, info
 sys.path.insert(0, str(Path(__file__).parent.parent / "simulators"))
 from adb_sim import load_state, log as adb_log, save_state  # noqa: E402
 
-# adb 命令前缀：默认指向模拟器；接真机时改成 ["adb"]
-ADB_PREFIX = [
-    sys.executable,
-    str(Path(__file__).parent.parent / "simulators" / "adb_sim.py"),
-]
+
+def resolve_adb_prefix(env: dict | None = None) -> list[str]:
+    """解析 adb 命令前缀（纯函数，便于单元测试）。
+
+    默认用项目内的 ``simulators/adb_sim.py`` 模拟车机；
+    **设置环境变量 ``ADB_BIN`` 即可切到真实 adb**（测试代码零改动）::
+
+        # PowerShell（单设备）
+        $env:ADB_BIN="adb"; python run_tests.py
+        # 多设备时可通过 -s 指定序列号（会按空格拆分）
+        $env:ADB_BIN="adb -s 1234567890ABCDEF"
+
+    也要以装在有空格路径里时，可直接写全路径并加引号（shlex 解析）。
+    """
+    e = os.environ if env is None else env
+    raw = (e.get("ADB_BIN") or "").strip()
+    if raw:
+        return shlex.split(raw)
+    return [
+        sys.executable,
+        str(Path(__file__).parent.parent / "simulators" / "adb_sim.py"),
+    ]
+
+
+# adb 命令前缀：默认指向模拟器；接真机时设置环境变量 ADB_BIN（见上）
+ADB_PREFIX = resolve_adb_prefix()
 
 
 class AdbLibrary:

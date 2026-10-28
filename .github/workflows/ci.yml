@@ -1,7 +1,9 @@
 name: 车载自动化测试 CI
 
 # 触发方式：
-#   - push / PR：pytest 30 个单元测试（秒级快速失败）+ 双 Python 版本矩阵跑 RF 全量 276 用例（约 6 分钟/版本；CI 无缓存约 8 分钟/版本）
+#   - pull_request：pytest 30 个单测 + 文档数字一致性检查 + RF 冒烟集（29 条，约 2 分钟/版本）—— 快速反馈
+#   - push（main/master）：完整跑全量 276 用例（约 6 分钟/版本；CI 无缓存约 8 分钟/版本）
+#   - nightly：完整跑 + 报告/覆盖率归档
 #   - nightly（每天北京时间 02:00）：完整跑 + 归档报告与覆盖率
 #   - 手动触发
 on:
@@ -56,19 +58,31 @@ jobs:
           python -m pip install pytest
           python -m pytest tools/pytest_style -q
 
+      - name: 文档数字一致性检查
+        # 防止 README/docs/KNOWN_ISSUES 的"用例数/需求数/教程篇数"随开发漂移；
+        # 规则见 tools/check_docs_consistency.py（现场统计 + 过期数字黑名单）。
+        run: python tools/check_docs_consistency.py
+
       - name: 测试规范一致性校验（需求/自动化引用）
         run: python test_spec_check.py
 
       - name: 生成测试用例（DBC → 边界值 / pairwise）
         run: python generate_testcases.py
 
-      - name: 运行测试（含交付报告 + 覆盖率）
-        run: python run_tests.py --report
+      - name: 运行测试（PR=冒烟快速反馈；push/nightly=全量+报告）
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "PR：只跑 smoke 标签冒烟集（快速反馈），全量由 nightly / push main 覆盖"
+            python run_tests.py --tag smoke
+          else
+            python run_tests.py --report
+          fi
 
       - name: 上传测试产物
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          # PR 冒烟也有 output.xml/log；全量另有 report/coverage/trace 三份 HTML
           name: test-results-${{ github.run_number }}-py${{ matrix.python-version }}
           path: |
             results/

@@ -9,6 +9,7 @@
 > 🚀 **完全零基础（没开过车、没写过测试）？先走** → [`start_here/`](start_here/README.md)（7 天，每天 1-2 小时）
 > 🐍 **想练 Python？** → [`python_practice/`](python_practice/README.md)（8 题 + 自动判分）
 > 📄 **要投简历/面试？** → [`deliverables/project_brief.md`](deliverables/project_brief.md)（项目说明书 + 简历描述）
+> 🎤 **要现场演示？** → [`deliverables/demo_script.md`](deliverables/demo_script.md)（15 分钟演示脚本，含追问与应急预案）
 > 🎤 **准备面试追问？** → [`docs/12 章 12.3 节`](docs/12_术语表与面试高频题.md)（针对本项目的 20 道追问）
 
 ---
@@ -81,6 +82,9 @@ python simulators/test_uds_e2e.py           # UDS 诊断全流程（10 步）
 python simulators/test_cluster_e2e.py       # 仪表+ADB 整链
 python simulators/test_ivi_e2e.py           # 座舱 IVI 联动
 python simulators/test_android_gui_click.py # 车机 GUI 点击全覆盖（27 项）
+
+python tools/hardware_check.py             # 仿真/真实硬件 配置检查（接硬件、演示前先跑）
+python tools/check_docs_consistency.py     # 文档数字一致性检查（改数字/加模块后跑；CI 门禁）
 ```
 
 ## 测试工程化工具链
@@ -97,7 +101,9 @@ python simulators/test_android_gui_click.py # 车机 GUI 点击全覆盖（27 �
 | `simulators/trace_tools.py` | **Trace 导出**：ASC（CANoe 可直接打开）/ BLF，含回读校验 | RF 关键字 `Export Bus Trace` |
 | `tools/pytest_style/` | **pytest 单元测试**（30 个，毫秒级，与 RF 系统测试互补） | `.\.venv\Scripts\python.exe -m pytest tools/pytest_style -q` |
 | `Dockerfile` / `.dockerignore` | **Docker 化测试环境**（python:3.12-slim，一条命令复现） | `docker build -t vehicle-test . && docker run --rm vehicle-test` |
-| `.github/workflows/ci.yml` | CI：Python **3.12/3.14 矩阵** + pytest 快速失败 + RF 全量 + nightly 归档 | 推送到 GitHub 即生效 |
+| `tools/hardware_check.py` | **真实硬件探针**：检查 CAN 接口/ADB 配置，打印仿真/真实模式与排查清单 | `python tools/hardware_check.py` |
+| `tools/check_docs_consistency.py` | **文档数字一致性门禁**：现场统计用例/需求/教程/训练数并查过期数字 | `python tools/check_docs_consistency.py` |
+| `.github/workflows/ci.yml` | CI：Python **3.12/3.14 矩阵** + PR 冒烟快速反馈 + 文档数字门禁 + push/nightly 全量与归档 | 推送到 GitHub 即生效 |
 
 **产物示例**：`results/test_summary.html`（交付报告，含需求覆盖率）、
 `results/coverage.html`（覆盖率）、`results/trace_matrix.html`（需求追溯矩阵）、
@@ -202,17 +208,20 @@ CAN 广播 0x400（媒体/电话/空调）+ 0x500（导航/空调细节）
 
 ```
 ├── docs/             # 40 篇教程（00 路线图 → 39 能力自检与学习路线）
-├── start_here/       # 7 天零基础主线（day1 → day7）
+├── start_here/       # 7 天零基础主线（day1 → day7）+ 毕业任务参考答案
 ├── python_practice/  # 8 道 Python 练习 + 自动判分
 ├── training/         # 12 个渐进实训（L1→L12，题目/模板/答案/判分器）
-├── tools/pytest_style/ # pytest 单元测试（30 个，毫秒级，与 RF 系统测试互补）
+├── tools/            # 工程工具链：pytest 单测 / 真实硬件探针 / 文档数字校验
+│   ├── pytest_style/ #   pytest 单元测试（30 个，毫秒级，与 RF 系统测试互补）
+│   ├── hardware_check.py         #   仿真⇄真实硬件 配置检查
+│   └── check_docs_consistency.py #   文档数字一致性（CI 门禁）
 ├── simulators/       # 车辆仿真（ECU/仪表/车机/总线/DBC + LIN/DoIP/视觉/CAN FD/SOME-IP/安全/Trace/OTA/Appium/HIL）
 ├── libraries/        # RF 自定义关键字库（18 个：总线/诊断/仪表/ADB/LIN/DoIP/视觉/性能/安全/CAN FD/SOME-IP/安全机制/OBD/Trace/OTA/ODX/Appium/HIL）
 ├── tests/robot/      # RF 主套件（20 个手写套件 + 1 自动生成 = 21 个 .robot，198 用例）
 ├── scenarios/        # 16 个真实工作风格场景（78 用例）
 ├── resources/        # 公共资源（环境生命周期管理）
 ├── requirements/     # 124 条需求清单（requirements.yaml）
-├── deliverables/     # 项目说明书/测试规范/验证报告/缺陷报告模板
+├── deliverables/     # 项目说明书/测试规范/验证报告/缺陷报告模板/15 分钟演示脚本
 ├── results/          # 测试产物（gitignore，运行后生成）
 ├── Dockerfile        # 容器化测试环境（python:3.12-slim）
 └── .github/          # CI 工作流（Python 3.12/3.14 矩阵 + pytest + RF 全量）
@@ -272,13 +281,27 @@ CAN 广播 0x400（媒体/电话/空调）+ 0x500（导航/空调细节）
 | **[39 能力自检与下一步学习路线](docs/39_能力自检与下一步学习路线.md)** | **40 篇知识地图 + 能力自检 + 入职后学习路线** |
 | **[场景脚本 scenarios/](docs/19_十六个场景脚本实战.md)** | **78 个真实工作风格用例（十六个场景脚本：12 核心 + 4 扩展），可直接跑** |
 | **[需求与交付物 requirements/ deliverables/](docs/20_测试规范与验证交付物.md)** | **124 条需求 + 测试规范/验证报告/缺陷报告模板** |
+| **[deliverables/demo_script.md](deliverables/demo_script.md)** | **15 分钟面试/汇报演示脚本：3 终端布局 + 一条完整链路 + 追问答案 + 应急预案** |
 
-## 接真实硬件
+## 接真实硬件（可选）
 
-| 目标 | 改动 |
-|---|---|
-| 真实 CAN（CANable/CANalyst） | `simulators/bus.py` 的 `interface` 改 `serial`/`socketcan` |
-| 真实安卓设备 | `libraries/AdbLibrary.py` 的 `ADB_PREFIX` 改 `["adb"]` |
+项目默认纯仿真；**不修改任何代码**，只用环境变量即可切到真实硬件：
+
+| 目标 | 环境变量示例 | 说明 |
+|---|---|---|
+| 真实 CAN（CANable/USB-CAN，slcan） | `CAN_INTERFACE=slcan` `CAN_CHANNEL=COM4` `CAN_BITRATE=500000` | 需 `pip install pyserial`（slcan 后端依赖） |
+| 真实 CAN（Linux socketcan） | `CAN_INTERFACE=socketcan` `CAN_CHANNEL=can0` | 先 `sudo ip link set can0 up type can bitrate 500000` |
+| 真实 CAN（PCAN/Vector） | `CAN_INTERFACE=pcan`（或 `vector`）+ 对应通道 | 需装厂商驱动/python-can 插件 |
+| 真实安卓设备 | `ADB_BIN=adb`（多设备 `ADB_BIN="adb -s 序列号"`） | 真机需开 USB 调试 |
+
+```powershell
+python tools/hardware_check.py     # 先检查配置：仿真/真实模式、接口能否打开、adb 是否可用
+$env:CAN_INTERFACE="slcan"; $env:CAN_CHANNEL="COM4"   # 设置后运行任何测试命令即走真实总线
+python run_tests.py --tag smoke    # 建议先跑冒烟，再跑全量
+Remove-Item Env:CAN_INTERFACE      # 删除即切回仿真
+```
+
+> ⚠️ 诚实声明：接入层与探针已就绪，但作者没有真实 CAN 硬件/真车机可验证，实际接线、驱动、波特率与整车一致性问题需你在真机上确认。原理与替换点见 [docs/33 §33.11](docs/33_工程工具链实战.md)。
 
 ## 已知边界（教学简化）
 

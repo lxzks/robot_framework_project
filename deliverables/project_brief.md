@@ -163,4 +163,6 @@ python run_tests.py --report
 | 协议原理（CAN/UDS/DTC） | `docs/02~04 章` |
 | 测试场景设计 | `scenarios/`（16 个文件）+ `docs/19 章` |
 | 需求追溯与交付 | `docs/20 章` + `requirements/` + `deliverables/` |
+| 现场演示（面试/汇报） | `deliverables/demo_script.md`（15 分钟脚本 + 追问答案 + 应急预案） |
+| 学习成果检验 | `start_here/毕业任务参考答案.md`（独立补一条测试的完整链路） |
 | 零基础入门路径 | `start_here/`（7 天） |

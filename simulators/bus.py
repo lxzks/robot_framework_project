@@ -24,6 +24,7 @@ bus.py — 虚拟 CAN 总线封装
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections import deque
 from typing import Optional
@@ -35,6 +36,58 @@ log = logging.getLogger("vehicle.bus")
 # 默认组播参数：频道像"微信群号"，端口像"群号里的房间号"
 DEFAULT_CHANNEL = "233.255.0.1"
 DEFAULT_PORT = 30000
+
+
+def resolve_bus_config(channel: str = DEFAULT_CHANNEL,
+                       port: int = DEFAULT_PORT,
+                       interface: str = "udp_multicast") -> dict:
+    """解析总线连接配置（**环境变量可覆盖**，便于从仿真切到真实硬件）。
+
+    环境变量（都有默认值，不设置 = 纯仿真，行为与之前完全一致）：
+
+        CAN_INTERFACE  接口类型。默认 ``udp_multicast``（虚拟总线）；
+                       接真实硬件可用 python-can 的接口名，例如：
+                       ``slcan``（CANable/USB-CAN 串口）、``socketcan``（Linux can0）、
+                       ``pcan``（PCAN-USB）、``vector``（Vector 盒）、``etas`` 等
+        CAN_CHANNEL    通道。仿真时是组播地址；真实硬件时是 COM3 / can0 / PCAN_USBBUS1 等
+        CAN_BITRATE    仲裁段波特率（默认 500000；仅真实硬件用）
+
+    返回纯 dict（纯函数、无副作用，便于单元测试）。
+
+    用法（PowerShell）::
+
+        $env:CAN_INTERFACE="slcan"; $env:CAN_CHANNEL="COM4"; $env:CAN_BITRATE="500000"
+        python run_tests.py
+
+    切回仿真：删除这些环境变量即可。
+    """
+    iface = (os.environ.get("CAN_INTERFACE") or interface or "udp_multicast").strip()
+    chan = (os.environ.get("CAN_CHANNEL") or str(channel)).strip()
+    try:
+        bitrate = int(os.environ.get("CAN_BITRATE") or 500000)
+    except ValueError:
+        bitrate = 500000
+    return {
+        "interface": iface,
+        "channel": chan,
+        "port": port,
+        "bitrate": bitrate,
+        "is_simulated": iface == "udp_multicast",
+    }
+
+
+def build_can_kwargs(cfg: dict) -> dict:
+    """把 resolve_bus_config 的结果转成 python-can 的 can.Bus(**kwargs) 参数。"""
+    kwargs = {
+        "interface": cfg["interface"],
+        "channel": cfg["channel"],
+        "receive_own_messages": False,   # 该接口不支持 True，见 __init__ 注释
+    }
+    if cfg["is_simulated"]:
+        kwargs["port"] = cfg["port"]
+    else:
+        kwargs["bitrate"] = cfg["bitrate"]
+    return kwargs
 
 
 class VirtualCanBus:
@@ -70,14 +123,20 @@ class VirtualCanBus:
         self._echo_own = echo_own
         self._tx_echo: "deque[tuple[float, can.Message]]" = deque(maxlen=200)
         self._echo_ttl = 2.0     # 缓存帧的存活时间（秒），过期丢弃
-        self._bus = can.Bus(
-            interface=interface,
-            channel=channel,
-            port=port,
-            receive_own_messages=False,   # 该接口不支持 True，见上
-        )
-        self._enlarge_rcvbuf()
-        log.info("[%s] 已加入虚拟 CAN 总线 %s:%d (%s)", node_name, channel, port, interface)
+
+        # 连接配置：默认纯仿真；设置 CAN_INTERFACE/CAN_CHANNEL/CAN_BITRATE
+        # 环境变量即可切到真实硬件（无需改任何测试代码）。
+        cfg = resolve_bus_config(channel=channel, port=port, interface=interface)
+        self.config = cfg
+        self.interface = cfg["interface"]
+        self._bus = can.Bus(**build_can_kwargs(cfg))
+        if cfg["is_simulated"]:
+            self._enlarge_rcvbuf()
+            log.info("[%s] 已加入虚拟 CAN 总线 %s:%d (%s)",
+                     node_name, cfg["channel"], cfg["port"], cfg["interface"])
+        else:
+            log.info("[%s] 已连接真实 CAN 硬件: interface=%s channel=%s bitrate=%d",
+                     node_name, cfg["interface"], cfg["channel"], cfg["bitrate"])
 
     def _enlarge_rcvbuf(self, size: int = 4 * 1024 * 1024) -> None:
         """调大 UDP 接收缓冲区（默认仅 64KB）。
